@@ -22,7 +22,7 @@ model download has no place in the required dependency set for this project.
 - [x] Multilingual/Indic text handling — normalisation, script detection, tokenisation
 - [x] Topic modelling with a coherence number rather than eyeballed word lists
 - [x] Correct evaluation: fit inside folds, macro-F1, per-class F1, leakage measured
-- [ ] Ship gate passes (`/ship`)
+- [ ] Ship gate passes
 
 ## Project-specific notes
 
