@@ -1,11 +1,12 @@
-"""Console entry point: compare, leakage, topics, normalize."""
+"""Console entry point: compare, leakage, topics, normalize, tickets-download,
+tickets-summary, route."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
-from . import data, evaluate, tickets, topics, vectorizers
+from . import data, evaluate, router, study, tickets, topics, vectorizers
 from .normalize import detect_script, normalize, tokenize
 
 
@@ -136,6 +137,35 @@ def cmd_tickets_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_route(args: argparse.Namespace) -> int:
+    test = None
+    if args.fixture:
+        if args.split == "test":
+            raise ValueError("the fixture has no held-out test split; use --split val")
+        fit, val = tickets.validation_split(tickets.load_fixture())
+        print(
+            "source: synthetic fixture (hand-written, not Banking77); "
+            "these numbers test the code and are not results"
+        )
+    else:
+        train, official_test = tickets.load_banking77(args.data_dir)
+        fit, val = tickets.validation_split(train)
+        print(f"source: Banking77 ({tickets.BANKING77_LICENCE}), {args.data_dir}")
+        if args.split == "test":
+            test = official_test
+            print("official test split: run once, after the arms and calibration are final")
+
+    arm = router.ARMS[args.arm]()
+    runs = study.run_arm(arm, fit, val, test)
+    evaluated = test if test is not None else val
+    print(
+        f"arm {arm.name}: {arm.description}; split {args.split}; "
+        f"fit {len(fit)} rows, evaluated {len(evaluated)} rows"
+    )
+    print(study.format_runs(runs))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="classical-nlp", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -182,6 +212,14 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--fixture", action="store_true", help="The synthetic 60-row fixture")
     source.add_argument("--data-dir", help="Directory holding the downloaded Banking77 CSVs")
     p_ts.set_defaults(func=cmd_tickets_summary)
+
+    p_route = sub.add_parser("route", help="Calibrate a router arm and price its decisions")
+    p_route.add_argument("--arm", choices=sorted(router.ARMS), required=True)
+    p_route.add_argument("--split", choices=("val", "test"), default="val")
+    route_source = p_route.add_mutually_exclusive_group(required=True)
+    route_source.add_argument("--fixture", action="store_true", help="The synthetic 60-row fixture")
+    route_source.add_argument("--data-dir", help="Directory holding the downloaded Banking77 CSVs")
+    p_route.set_defaults(func=cmd_route)
 
     return parser
 

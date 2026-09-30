@@ -76,6 +76,29 @@
 - **Not yet measured.** No router arm exists yet and no Banking77 number of any kind has
   been computed. The 10:1 misroute:handoff ratio is an assumption, not a measurement.
 
+### 2026-09-30 — v2 router study, T2a: router contract, TF-IDF arm, calibrated study runner
+
+- **Built.** The `router/` package: the `Router` protocol (`predict_top(texts)` returns
+  `(labels, confidence)`, deliberately not `predict_proba`), `ABSTAIN = -1` with confidence
+  always 0.0, `check_output` that every arm returns through, and arm A (TF-IDF word +
+  logistic regression, inference cost 0). `study.run_arm` fits an arm, calibrates its
+  top-label confidence and prices the decisions at every ratio in `SENSITIVITY_RATIOS`.
+  New `route --arm A --split {val,test}` subcommand, with `--fixture` or `--data-dir`.
+- **Calibration design.** Calibration is a study step applied identically to every arm, not
+  part of any arm; each run reports a `raw` and an `isotonic` row. On the validation split
+  the isotonic confidence is 5-fold cross-fitted, so no row is scored by a calibrator that
+  saw it. On the test split the calibrator is fitted once on all validation rows. Abstained
+  rows are excluded from every calibrator fit and keep confidence 0.0, so they are always
+  handed off.
+- **Fit split.** Arm A is fitted on the 80% fit part of the official train split and is not
+  refitted on the full train split, so the calibrator calibrates the same model it was
+  fitted against.
+- **Fixture behaviour.** On the 60-row fixture the raw arm A confidences sit below every
+  threshold in the sweep, so the raw row hands everything off. This is about the code path
+  on a synthetic set, not a result.
+- **Not yet measured.** No Banking77 number of any kind has been computed and no LLM arm
+  exists yet.
+
 ---
 
 ## Rejected approaches
