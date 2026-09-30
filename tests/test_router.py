@@ -7,7 +7,7 @@ import pytest
 
 from classicalnlp import tickets
 from classicalnlp.data import Corpus
-from classicalnlp.router import ABSTAIN, ARMS, Router, TfidfArm, check_output
+from classicalnlp.router import ABSTAIN, ARMS, LLMArm, Router, TfidfArm, check_output
 
 
 def _corpus(documents, labels):
@@ -17,7 +17,7 @@ def _corpus(documents, labels):
 def test_arm_satisfies_the_contract_and_is_registered():
     assert isinstance(TfidfArm(), Router)
     assert TfidfArm.name == "A"
-    assert {"A": TfidfArm} == ARMS
+    assert set(ARMS) == {"A", "B"} and ARMS["A"] is TfidfArm and ARMS["B"] is LLMArm
 
 
 def test_predict_top_on_the_fixture():

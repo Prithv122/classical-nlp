@@ -8,6 +8,8 @@ import sys
 
 from . import data, evaluate, router, study, tickets, topics, vectorizers
 from .normalize import detect_script, normalize, tokenize
+from .router.llm_arm import LLMClient, Provider, ResponseCache, llm_arms
+from .router.ollama import DEFAULT_HOST, DEFAULT_MODEL, OllamaProvider
 
 
 def _stdout_utf8() -> None:
@@ -137,7 +139,29 @@ def cmd_tickets_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def _make_provider(args: argparse.Namespace) -> Provider:
+    """The model behind arm B. Constructing it makes no connection; tests replace this."""
+    return OllamaProvider(args.model or DEFAULT_MODEL, args.host)
+
+
+def _check_route_args(args: argparse.Namespace) -> None:
+    """Refuse bad combinations before any data is loaded or any model is called."""
+    if args.arm == "B":
+        if not args.cache:
+            raise ValueError("arm B needs --cache PATH: a slow run must never be repeated")
+    elif args.model is not None or args.cache is not None:
+        raise ValueError("--model and --cache apply to arm B only")
+    if args.limit is not None:
+        if args.limit < 1:
+            raise ValueError("--limit must be at least 1")
+        if args.split == "test":
+            raise ValueError(
+                "--limit is for smoke runs on the validation split; the test split is run whole"
+            )
+
+
 def cmd_route(args: argparse.Namespace) -> int:
+    _check_route_args(args)
     test = None
     if args.fixture:
         if args.split == "test":
@@ -154,15 +178,46 @@ def cmd_route(args: argparse.Namespace) -> int:
         if args.split == "test":
             test = official_test
             print("official test split: run once, after the arms and calibration are final")
+    if args.limit is not None:
+        val = data.Corpus(
+            documents=val.documents[: args.limit],
+            labels=val.labels[: args.limit],
+            label_names=val.label_names,
+        )
+        print(f"LIMITED to the first {args.limit} validation rows: a smoke run, not a result")
 
-    arm = router.ARMS[args.arm]()
-    runs = study.run_arm(arm, fit, val, test)
+    client = cache = None
+    if args.arm == "B":
+        cache = ResponseCache(args.cache)
+        client = LLMClient(_make_provider(args), cache)
+        runs = []
+        for arm in llm_arms(client):
+            runs += study.run_arm(arm, fit, val, test)
+        label = "B (variants B-logprob, B-verbal)"
+    else:
+        arm = router.ARMS[args.arm]()
+        runs = study.run_arm(arm, fit, val, test)
+        label = arm.name
     evaluated = test if test is not None else val
     print(
-        f"arm {arm.name}: {arm.description}; split {args.split}; "
+        f"arm {label}: {router.ARMS[args.arm].description}; split {args.split}; "
         f"fit {len(fit)} rows, evaluated {len(evaluated)} rows"
     )
     print(study.format_runs(runs))
+    print(study.format_usage(runs))
+    if client is not None:
+        print(
+            f"llm calls: {client.calls} made, {client.hits} reused from the cache or the "
+            f"other variant (cache: {args.cache})"
+        )
+        if cache.skipped > 0:
+            print(f"cache: {cache.skipped} lines skipped")
+        print(
+            "latency is the model-side time Ollama reports, load time excluded, "
+            "as recorded when each response was first generated"
+        )
+    if args.save:
+        print(f"saved {study.save_runs(runs, args.save)} rows to {args.save}")
     return 0
 
 
@@ -219,6 +274,13 @@ def build_parser() -> argparse.ArgumentParser:
     route_source = p_route.add_mutually_exclusive_group(required=True)
     route_source.add_argument("--fixture", action="store_true", help="The synthetic 60-row fixture")
     route_source.add_argument("--data-dir", help="Directory holding the downloaded Banking77 CSVs")
+    p_route.add_argument("--model", default=None, help=f"Arm B model (default {DEFAULT_MODEL})")
+    p_route.add_argument("--host", default=DEFAULT_HOST, help="Arm B Ollama server address")
+    p_route.add_argument("--cache", metavar="PATH", help="Arm B response cache (JSONL, required)")
+    p_route.add_argument(
+        "--limit", type=int, default=None, help="Smoke run: first N validation rows only"
+    )
+    p_route.add_argument("--save", metavar="PATH", help="Write per-ticket results (JSONL)")
     p_route.set_defaults(func=cmd_route)
 
     return parser

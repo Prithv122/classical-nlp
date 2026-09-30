@@ -7,11 +7,16 @@ a matrix, and one name for two shapes invites mistakes.
 
 A ticket the router could not classify gets the label :data:`ABSTAIN` and confidence 0.0,
 so the cost rule always hands it off and it can never count as correct.
+
+A router may also expose ``usage``, a :class:`Usage` that ``predict_top`` sets for the texts it
+just scored (per-ticket latency and, for model-backed arms, token counts). The protocol does
+not require it.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
 import numpy as np
@@ -19,6 +24,20 @@ import numpy as np
 from ..data import Corpus
 
 ABSTAIN = -1
+
+
+@dataclass(frozen=True, eq=False)
+class Usage:
+    """Per-ticket cost of one ``predict_top`` call: one entry per scored ticket, same order.
+
+    ``seconds`` is always present. The token arrays are ``None`` for a router that has no
+    tokens, and are stored exactly as the provider reported them.
+    """
+
+    seconds: np.ndarray
+    prompt_tokens: np.ndarray | None = None
+    cached_prompt_tokens: np.ndarray | None = None
+    output_tokens: np.ndarray | None = None
 
 
 @runtime_checkable

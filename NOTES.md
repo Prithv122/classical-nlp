@@ -99,6 +99,46 @@
 - **Not yet measured.** No Banking77 number of any kind has been computed and no LLM arm
   exists yet.
 
+### 2026-09-30 — v2 router study, T2b: LLM arm, Ollama client, response cache, usage accounting
+
+- **Arm B.** `LLMArm` scores each ticket with one model response that feeds two variants,
+  `B-logprob` and `B-verbal`. The prompt lists the 77 intents first and puts the ticket last,
+  so consecutive prompts share the whole prefix and Ollama can reuse it. The reply must be
+  two lines, `intent: <name>` then `confidence: <0..1>`; the intent must match a label name
+  exactly, case-sensitive. Anything else abstains: no repair, no fuzzy matching, no retries.
+- **Confidence.** `B-logprob` is `exp` of the summed log-probs of the tokens spelling the
+  chosen intent, clipped to [0, 1]. `B-verbal` is the stated number, used only if it is a
+  plain decimal in [0, 1]. Abstention is independent per variant: an unusable intent abstains
+  both, an unusable stated number abstains only `B-verbal`, unusable log-probs only
+  `B-logprob`.
+- **Ollama client.** `router/ollama.py`, standard library only, one non-streaming request
+  per prompt with log-probs. It records the reply text, the per-token log-probs,
+  `prompt_eval_count` and `prompt_eval_cached_count` raw, `eval_count`, and model-side seconds
+  as `(total_duration - load_duration) / 1e9`. A missing field raises a named error; nothing
+  is invented.
+- **Response cache.** JSONL keyed by sha256 of the provider identity plus the prompt, where
+  the identity covers the model and the generation settings. One line is written after every
+  response, so an interrupted run resumes from what it already has; a half-written last line
+  is skipped and counted on load. `route --arm B` requires `--cache`.
+- **Test double.** `FakeLLM` and `fake_completion` exist so everything is tested without a
+  model. Their numbers test the code and are not model behaviour.
+- **Usage.** `Usage` carries per-ticket seconds and token counts for every arm; arm A, which
+  reports none, is timed per ticket. `route` prints latency and tokens beside the table, and
+  `--save` writes one JSON line per run and ticket (it overwrites). `--limit N` is a smoke aid
+  on the validation split only and labels its output as not a result.
+- **Ratio guard.** `run_arm` rejects cost ratios below 1 before the arm is fitted or called.
+  Below 1 the cost rule auto-routes every ticket, including a confidence-0.0 abstention, and
+  the study would then count it as a misroute. At ratio 1 the rule still hands off 0.0.
+- **API behaviour observed on the owner's machine on 2026-09-30, Ollama 0.34.4.** Log-probs
+  are returned without `top_logprobs`. The token strings concatenate to the response.
+  `prompt_eval_count` is the full prompt and `prompt_eval_cached_count` the reused part. Load
+  time is inside `total_duration` and is excluded from latency.
+- **Limits.** Inference cost is 0 in the cost rows: there is no price assumption yet, and
+  latency and tokens are reported beside the table instead. The `B-logprob` confidence is the
+  probability of the intent string, not normalised over the 77 intents.
+- **Not yet measured.** No real-model call has been made, no Banking77 number of any kind has
+  been computed, and the prompt has not been tried against the real model.
+
 ---
 
 ## Rejected approaches
