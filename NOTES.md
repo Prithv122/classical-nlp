@@ -54,6 +54,28 @@
   (`uv sync --extra embeddings`), the wrapper imports lazily, and the error message when it
   is missing tells you the exact command.
 
+### 2026-09-30 — v2 router study, T1: data, calibration and cost layer
+
+- **Built.** `tickets.py` (Banking77 loader, stratified seeded 20% validation split of the
+  train split, synthetic fixture, checksum-verified download), `costs.py` (the routing cost
+  rule and expected-cost accounting), top-label calibration helpers appended to
+  `calibrate.py`, and two CLI subcommands, `tickets-download` and `tickets-summary`. Tests
+  for all of it; none touch the network.
+- **Vendored file.** `calibrate.py` comes from fraud-calibrated @ ebf6770,
+  `src/fraud_calibrated/calibration.py`, MIT. The code is unchanged; only the module
+  docstring and the `fit_isotonic` docstring were adapted, and the top-label helpers at the
+  bottom are new here.
+- **Banking77.** PolyAI, 13,083 queries, 77 intents, official split 10,003 train / 3,080
+  test. Licence CC-BY-4.0; cite Casanueva et al. 2020, arXiv:2003.04807. The download uses
+  the upstream CSVs pinned to commit `57ec275d8078af65b7731c2a98be812d844a6d6b`, with
+  SHA-256 `b06e26ac...c664b` (train) and `d12d6e3b...eb474d` (test) enforced, rather than
+  Hugging Face: that repository holds only a loading script and no data files, and current
+  `datasets` refuses to run scripts.
+- **Fixture.** `fixtures/tickets_sample.csv` is 60 hand-written synthetic rows (10 each for
+  6 intents). It exists to test the code and is not Banking77 data.
+- **Not yet measured.** No router arm exists yet and no Banking77 number of any kind has
+  been computed. The 10:1 misroute:handoff ratio is an assumption, not a measurement.
+
 ---
 
 ## Rejected approaches

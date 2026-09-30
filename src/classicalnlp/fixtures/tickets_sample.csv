@@ -1,0 +1,61 @@
+text,category
+When will my new card arrive?,card_arrival
+"I ordered a card two weeks ago, and it still has not shown up",card_arrival
+Where is my card? It was supposed to be here by now,card_arrival
+Tracking says my card was sent but nothing has come through the door,card_arrival
+How long does delivery of a new card usually take?,card_arrival
+"My card has not arrived yet, can you check the status?",card_arrival
+I am still waiting for the card you posted last month,card_arrival
+"The card never came, so who do I contact about the delivery?",card_arrival
+Has my replacement card been dispatched?,card_arrival
+Is there a way to see when the card I ordered will be delivered?,card_arrival
+I think my card was stolen on the bus this morning,lost_or_stolen_card
+"I lost my wallet, so my card is gone too",lost_or_stolen_card
+Someone took my card and I need to block it right away,lost_or_stolen_card
+"My card is missing, I last used it yesterday at a cafe",lost_or_stolen_card
+Please freeze my card because I cannot find it anywhere,lost_or_stolen_card
+"I was pickpocketed, and my card went with my phone",lost_or_stolen_card
+What do I do if my card has been stolen?,lost_or_stolen_card
+"I left my card in a taxi, can you cancel it?",lost_or_stolen_card
+My card has gone missing and I am worried about fraud,lost_or_stolen_card
+I have lost my card while travelling abroad,lost_or_stolen_card
+What is the exchange rate for euros today?,exchange_rate
+"Which rate do you use when I convert pounds to dollars, and is it the market one?",exchange_rate
+How do I find out the current rate before I exchange money?,exchange_rate
+Can you tell me the rate for converting rupees to dirhams?,exchange_rate
+Do you show the exchange rate before I confirm a currency swap?,exchange_rate
+"Where does your exchange rate come from, and how often does it change?",exchange_rate
+I want to know today's rate for yen,exchange_rate
+What rate will I get if I change money in the app?,exchange_rate
+Is the rate you show the same as the one on the internet?,exchange_rate
+"Before I convert, what is the going rate for Swiss francs?",exchange_rate
+My top up failed and the money is not on my account,top_up_failed
+"I tried to add money, but the top up did not go through",top_up_failed
+Why did my top up fail when the payment was accepted?,top_up_failed
+"The top up shows as failed, yet my bank took the money",top_up_failed
+Adding funds by card keeps failing with an error,top_up_failed
+"My top up was declined, what should I do?",top_up_failed
+I attempted a top up this morning and it failed,top_up_failed
+"The app says the top up could not be completed, please help",top_up_failed
+Every time I try to top up my account it fails,top_up_failed
+A top up I made yesterday failed and I have not been refunded,top_up_failed
+Why was I charged a fee for taking cash out?,cash_withdrawal_charge
+"There is an extra charge on my cash withdrawal, and I did not expect it",cash_withdrawal_charge
+How much does it cost to withdraw cash abroad?,cash_withdrawal_charge
+I was charged when I used the cash machine,cash_withdrawal_charge
+"What is the fee for an ATM withdrawal, is it a flat amount?",cash_withdrawal_charge
+Please explain the charge on my last cash withdrawal,cash_withdrawal_charge
+"Are there limits before a withdrawal fee applies, or is it always charged?",cash_withdrawal_charge
+Why does taking money out at a cash machine cost me extra?,cash_withdrawal_charge
+"I withdrew cash and a fee appeared, can that be reversed?",cash_withdrawal_charge
+Is there a charge for withdrawing cash in my own country?,cash_withdrawal_charge
+My refund still is not showing up on my account,Refund_not_showing_up
+"The shop said they refunded me a week ago, but I see nothing",Refund_not_showing_up
+Where is my refund? It has not appeared yet,Refund_not_showing_up
+"I returned an item, and the money has not come back to my card",Refund_not_showing_up
+How long until a refund shows up in my balance?,Refund_not_showing_up
+"A refund was promised, yet my account does not show it",Refund_not_showing_up
+The merchant confirmed my refund but it is not on my statement,Refund_not_showing_up
+I am still waiting for my refund to appear,Refund_not_showing_up
+"My refund is missing, can you look into it?",Refund_not_showing_up
+Refund from an online order has not arrived in my account,Refund_not_showing_up

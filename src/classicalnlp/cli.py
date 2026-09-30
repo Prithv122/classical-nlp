@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import data, evaluate, topics, vectorizers
+from . import data, evaluate, tickets, topics, vectorizers
 from .normalize import detect_script, normalize, tokenize
 
 
@@ -108,6 +108,34 @@ def cmd_normalize(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_tickets_download(args: argparse.Namespace) -> int:
+    paths = tickets.download_banking77(args.dest)
+    for split, path in paths.items():
+        print(f"{split:<5} {path}  sha256 {tickets.sha256_file(path)}")
+    print(f"Banking77 ({tickets.BANKING77_LICENCE}), source: {tickets.BANKING77_SOURCE}")
+    return 0
+
+
+def cmd_tickets_summary(args: argparse.Namespace) -> int:
+    if args.fixture:
+        corpus = tickets.load_fixture()
+        print("source: synthetic fixture (hand-written, not Banking77)")
+    else:
+        # Train split only: nothing computed on the official test split is shown here.
+        corpus = tickets.load_banking77(args.data_dir)[0]
+        print(f"source: Banking77 train split ({tickets.BANKING77_LICENCE}), {args.data_dir}")
+    fit, val = tickets.validation_split(corpus)
+
+    def smallest(c: data.Corpus) -> int:
+        return min(count for count in c.class_counts.values() if count)
+
+    print(f"rows: {len(corpus)}")
+    print(f"intents present: {sum(1 for n in corpus.class_counts.values() if n)}")
+    print(f"fit/val: {len(fit)}/{len(val)}")
+    print(f"smallest per-intent count: fit {smallest(fit)}, val {smallest(val)}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="classical-nlp", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -144,6 +172,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_norm.add_argument("--text", default=None)
     p_norm.add_argument("--language", default=None, help="Stopword list to apply, e.g. hi, kn")
     p_norm.set_defaults(func=cmd_normalize)
+
+    p_dl = sub.add_parser("tickets-download", help="Fetch the pinned Banking77 CSVs (checksummed)")
+    p_dl.add_argument("--dest", default=str(tickets.DEFAULT_DIRECTORY))
+    p_dl.set_defaults(func=cmd_tickets_download)
+
+    p_ts = sub.add_parser("tickets-summary", help="Sizes and class counts of a ticket corpus")
+    source = p_ts.add_mutually_exclusive_group(required=True)
+    source.add_argument("--fixture", action="store_true", help="The synthetic 60-row fixture")
+    source.add_argument("--data-dir", help="Directory holding the downloaded Banking77 CSVs")
+    p_ts.set_defaults(func=cmd_tickets_summary)
 
     return parser
 

@@ -1,12 +1,17 @@
-"""Calibration measurement and correction.
+# Vendored from github.com/Prithv122/fraud-calibrated @ ebf6770,
+# src/fraud_calibrated/calibration.py (MIT). Function bodies are unchanged and the
+# docstrings are adapted to this repo; the top-label helpers at the bottom are new here.
 
-A model can rank customers well (good AUC) while its predicted probabilities are
-useless as probabilities -- gradient boosting in particular tends to push scores
-toward 0 and 1 more aggressively than the true rate warrants. The cost model in
-:mod:`fraud_calibrated.costs` divides a fixed cost by ``prob_default``, so a badly
-calibrated score does not just look wrong on a reliability diagram, it produces the
-wrong threshold and therefore the wrong decision. This module measures that gap and
-fixes it with isotonic regression fitted on a fold the model never trained on.
+"""Calibration measurement and correction for a router's top-label confidence.
+
+A classifier can rank tickets well while its confidence is useless as a probability: a
+router that says 0.9 and is right 60% of the time will auto-route tickets it should have
+handed to a human. The cost rule in :mod:`classicalnlp.costs` compares
+``(1 - confidence) * misroute_cost`` against the handoff cost, so a badly calibrated
+confidence does not just look wrong on a reliability diagram, it produces the wrong
+decision. This module measures that gap (Brier score, equal-width-bin ECE) and can fix
+it with isotonic regression fitted on a fold the model never trained on. The top-label
+helpers at the bottom adapt the binary tools to multiclass predictions.
 """
 
 from __future__ import annotations
@@ -86,10 +91,11 @@ def sklearn_reliability_curve(
 def fit_isotonic(y_true: np.ndarray, prob: np.ndarray) -> IsotonicRegression:
     """Fit an isotonic (monotone, non-parametric) calibrator.
 
-    Isotonic over Platt/sigmoid scaling because LightGBM's raw-score miscalibration is
-    not obviously sigmoid-shaped, and with ~4,800 positives in the validation fold
-    there is enough data that isotonic's extra flexibility does not just overfit noise
-    (checked empirically in NOTES.md rather than assumed).
+    ``y_true`` is the 0/1 outcome and ``prob`` the score to correct. Fit it on a held-out
+    fold, then apply it with :func:`apply_isotonic` before the confidence is handed to the
+    cost rule in :mod:`classicalnlp.costs`. Isotonic is preferred to sigmoid scaling here
+    because a router's raw confidence is not obviously sigmoid-shaped, at the price of
+    needing enough validation data that its extra flexibility does not fit noise.
     """
     calibrator = IsotonicRegression(out_of_bounds="clip")
     calibrator.fit(prob, y_true)
@@ -98,3 +104,26 @@ def fit_isotonic(y_true: np.ndarray, prob: np.ndarray) -> IsotonicRegression:
 
 def apply_isotonic(calibrator: IsotonicRegression, prob: np.ndarray) -> np.ndarray:
     return calibrator.predict(prob)
+
+
+# --- Top-label helpers (new in this repo) ---
+
+
+def top_label_correct(y_true: np.ndarray, y_pred: np.ndarray) -> np.ndarray:
+    """1.0 where the predicted class is the true class, else 0.0."""
+    return (np.asarray(y_true) == np.asarray(y_pred)).astype(float)
+
+
+def top_label_ece(
+    y_true: np.ndarray, y_pred: np.ndarray, confidence: np.ndarray, *, n_bins: int = 10
+) -> float:
+    """ECE of the top-label confidence against whether the prediction was right."""
+    correct = top_label_correct(y_true, y_pred)
+    return expected_calibration_error(correct, confidence, n_bins=n_bins)[0]
+
+
+def fit_top_label_isotonic(
+    y_true: np.ndarray, y_pred: np.ndarray, confidence: np.ndarray
+) -> IsotonicRegression:
+    """Isotonic calibrator of confidence against correctness; apply with ``apply_isotonic``."""
+    return fit_isotonic(top_label_correct(y_true, y_pred), confidence)
