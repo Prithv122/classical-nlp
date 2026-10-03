@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from . import data, evaluate, router, study, tickets, topics, vectorizers
+from . import data, evaluate, report, router, study, tickets, topics, vectorizers
 from .normalize import detect_script, normalize, tokenize
 from .router.llm_arm import LLMClient, Provider, ResponseCache, llm_arms
 from .router.ollama import DEFAULT_HOST, DEFAULT_MODEL, OllamaProvider
@@ -221,6 +221,23 @@ def cmd_route(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_route_report(args: argparse.Namespace) -> int:
+    if args.iterations < 100:
+        raise ValueError("--iterations must be at least 100")
+    runs = report.load_runs(args.runs, final=args.final)
+    written = report.write_report(
+        runs,
+        args.out,
+        source_note=args.source_note,
+        iterations=args.iterations,
+        plots=not args.no_plots,
+    )
+    print(f"wrote {len(written)} files to {args.out}")
+    for path in written:
+        print(path.name)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="classical-nlp", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -282,6 +299,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_route.add_argument("--save", metavar="PATH", help="Write per-ticket results (JSONL)")
     p_route.set_defaults(func=cmd_route)
+
+    p_report = sub.add_parser(
+        "route-report", help="Tables, comparisons and a report from route --save files"
+    )
+    p_report.add_argument(
+        "--runs", nargs="+", required=True, metavar="PATH", help="route --save files"
+    )
+    p_report.add_argument("--out", required=True, metavar="DIR", help="Directory to write into")
+    p_report.add_argument("--source-note", default=None, help="Where the data came from")
+    p_report.add_argument(
+        "--iterations", type=int, default=2000, help="Bootstrap resamples (>= 100)"
+    )
+    p_report.add_argument("--no-plots", action="store_true", help="Skip the reliability diagram")
+    p_report.add_argument(
+        "--final", action="store_true", help="Allow runs on the official test split"
+    )
+    p_report.set_defaults(func=cmd_route_report)
 
     return parser
 

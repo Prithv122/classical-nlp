@@ -35,6 +35,7 @@ def save_reliability(panels: list, path: str | Path, source_note: str | None = N
     observed accuracy), sized by the bin count.
     """
     try:
+        import matplotlib  # noqa: F401  (absent package -> the install hint below)
         from matplotlib.figure import Figure
     except ImportError as exc:
         raise ImportError(NO_MATPLOTLIB) from exc
