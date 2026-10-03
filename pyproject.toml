@@ -30,6 +30,10 @@ packages = ["src/classicalnlp"]
 embeddings = [
     "sentence-transformers>=3.3",
 ]
+# Reliability diagrams for `route-report`; the report itself needs no plotting library.
+router = [
+    "matplotlib>=3.9",
+]
 
 [dependency-groups]
 dev = [

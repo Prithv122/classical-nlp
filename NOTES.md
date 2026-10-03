@@ -173,6 +173,53 @@
   30-ticket smoke and the full validation run (2,001 tickets, prompt frozen before it started)
   have been made, on the validation split only. The official test split has not been touched.
 
+### 2026-10-04 — v2 router study, T3: route-report, paired comparisons, break-even compute sensitivity, arm-C stub
+
+- **Built.** `classical-nlp route-report --runs PATH [PATH ...] --out DIR` reads the per-ticket
+  files written by `route --save` and writes `sensitivity.csv`, `usage.csv`, `abstentions.csv`,
+  `comparison_cost.csv`, `comparison_accuracy.csv`, `comparison_ece.csv`, `breakeven.csv` (the
+  comparison files and the break-even only when arm A and a B variant are both present), an
+  optional `reliability.png` and `report.md`. Options: `--source-note`, `--iterations` (at least
+  100), `--no-plots`, `--final`. Every number is recomputed from the saved rows with
+  `costs.expected_cost` and `calibrate`. `compare.py` holds the per-ticket cost, the paired
+  bootstrap for cost and for ECE, the break-even and the interval reading; `plots.py` draws the
+  reliability grid; `report.py` loads, validates and writes. matplotlib is the optional `router`
+  extra (`uv sync --extra router`), imported inside the drawing function only, and CI now
+  installs it so the plot tests run.
+- **Reporting decisions.** Cost is the routing decision cost per 1,000 tickets, excluding
+  compute, in handoff units (one human handoff = 1.0); no currency, per-token or per-second
+  price appears anywhere. Pairs are A against each B variant within the same calibration; the
+  headline is (A, isotonic) against (B-logprob, isotonic) at the 10:1 ratio and exactly one row
+  carries it. Differences are A minus B, so negative means A is lower. The bootstrap is paired:
+  one set of resample indices serves both arms, with a fixed seed, 95% percentile interval and a
+  two-sided p-value taken from the resampled differences. McNemar is exact and counts an
+  abstention as wrong. ECE is top-label over all rows, abstentions included. Break-even:
+  advantage per ticket is the mean of (cost A - cost B); the break-even per ticket is that value
+  when it is positive and blank otherwise; per second it is divided by B's mean model-side
+  seconds. H1 (A has lower cost than B at the headline ratio) is read from the headline cost
+  interval and H2 (A has lower ECE than B) from the A-isotonic against B-logprob-isotonic ECE
+  interval, stated mechanically ("A lower", "B lower" or "no clear difference") with no
+  commentary and no winner picked.
+- **Guards.** A file on the official test split is refused unless `--final` is passed. The
+  loader refuses bad JSON, missing keys, unknown arms, out-of-range confidence, an abstention
+  with confidence above 0, non-dense indices, a run present twice, two splits at once,
+  calibrations that disagree on predictions, and arms that do not share the same tickets. The
+  report states "Arm C (dedicated decision model): not evaluated (not available)."
+- **Limits.** Isotonic calibrators are not refitted inside a bootstrap resample, and the
+  cross-fitted confidences are treated as fixed. Arm A's own compute is not subtracted in the
+  break-even. The two latency clocks differ (A is wall-clock per ticket in-process; B is the
+  model-side time Ollama reports, load excluded), so they are not directly comparable. CSV floats
+  are written with ten significant digits, which is accurate to a relative 5e-10, so the test
+  that checks the CSV against the study's own numbers compares with a relative 1e-9. The README is unchanged; `report.md` stands in for the
+  placeholder results skeleton.
+- **Not built.** The arm-C interface and stub were not built: the size cap for this ticket was
+  reached once `route-report` was complete. There is no `DecisionArm`, no `NotAvailable`, no
+  `"C"` entry in `ARMS`, no test for them, and no change to `tests/test_router.py`. Until that
+  commit lands, `route --arm C` fails at argument parsing as an invalid choice, not with a
+  "not available" message.
+- **Not yet measured.** `route-report` has not been run on real per-ticket files, no comparison
+  has been computed on Banking77, and the official test split has not been touched.
+
 ---
 
 ## Rejected approaches
