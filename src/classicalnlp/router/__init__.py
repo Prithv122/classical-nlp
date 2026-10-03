@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .base import ABSTAIN, Router, Usage, check_output
+from .decision_arm import DecisionArm, NotAvailable
 from .llm_arm import (
     Completion,
     FakeLLM,
@@ -15,15 +16,17 @@ from .llm_arm import (
 )
 from .tfidf_arm import TfidfArm
 
-ARMS: dict[str, type] = {"A": TfidfArm, "B": LLMArm}
+ARMS: dict[str, type] = {"A": TfidfArm, "B": LLMArm, "C": DecisionArm}
 
 __all__ = [
     "ABSTAIN",
     "ARMS",
     "Completion",
+    "DecisionArm",
     "FakeLLM",
     "LLMArm",
     "LLMClient",
+    "NotAvailable",
     "ProviderError",
     "ResponseCache",
     "Router",

@@ -212,11 +212,11 @@
   are written with ten significant digits, which is accurate to a relative 5e-10, so the test
   that checks the CSV against the study's own numbers compares with a relative 1e-9. The README is unchanged; `report.md` stands in for the
   placeholder results skeleton.
-- **Not built.** The arm-C interface and stub were not built: the size cap for this ticket was
-  reached once `route-report` was complete. There is no `DecisionArm`, no `NotAvailable`, no
-  `"C"` entry in `ARMS`, no test for them, and no change to `tests/test_router.py`. Until that
-  commit lands, `route --arm C` fails at argument parsing as an invalid choice, not with a
-  "not available" message.
+- **Arm C.** Arm C is a stub, added after the report in a separate small change. `DecisionArm`
+  is registered as `ARMS["C"]`; its `fit` and `predict_top` raise `NotAvailable` (a
+  `ValueError`), so `route --arm C` exits 2 with "not available" instead of failing at argument
+  parsing. The report states it as not evaluated and never estimates it. The only edit to an
+  existing test is the registry assertion in `tests/test_router.py`.
 - **Not yet measured.** `route-report` has not been run on real per-ticket files, no comparison
   has been computed on Banking77, and the official test split has not been touched.
 
