@@ -139,6 +139,40 @@
 - **Not yet measured.** No real-model call has been made, no Banking77 number of any kind has
   been computed, and the prompt has not been tried against the real model.
 
+### 2026-10-04 — correction: the routing rule's boundary, and what it changed
+
+- **The bug.** The rule is documented as strict: a ticket whose expected misroute cost equals
+  the handoff cost is handed off. In floating point `1 - 0.9` is not `0.1`, so `(1 - c) * m < h`
+  auto-routed a confidence of exactly 0.9 at 10:1 and exactly 0.8 at 5:1, while handing off 0.95
+  at 20:1. The old tests used only dyadic values (0.75 at 4:1), where the arithmetic is exact,
+  and so never saw it. It matters for `B-verbal`, which states coarse values (0.8, 0.9, 0.95,
+  1.0) that sit on those thresholds.
+- **The fix.** `costs.auto_route` now treats a confidence within a relative `1e-9` of the
+  threshold as on it, and so handed off (`BOUNDARY_TOLERANCE`). The decision rule, the
+  thresholds and the headline ratio are unchanged: the code now does what the rule already
+  said. New tests cover 0.5@2:1, 0.8@5:1, 0.9@10:1, 0.95@20:1 and 0.99@100:1 at the boundary
+  and 1e-6 either side of it; the 0.8@5:1 and 0.9@10:1 cases fail on the previous code.
+- **Nothing was re-run.** The model was not called again. Predicted labels, `B-logprob` and
+  `B-verbal` confidences, calibration, the prompt, the cache and the saved per-ticket files are
+  unchanged. Only the conversion from a recorded confidence to route or hand off was corrected,
+  and the validation rows were re-derived from the saved per-ticket files.
+- **Impact on the validation split (a development-time audit, not a result).** Four of the 24
+  arm/calibration/ratio rows changed; the other 20 are identical.
+
+  | Row | Auto-routed before → after | Cost per 1,000 before → after |
+  |---|---|---|
+  | A isotonic, 5:1 | 1,619 → 1,618 | 460.8 → 458.8 |
+  | B-logprob isotonic, 5:1 | 429 → 424 | 898.1 → 895.6 |
+  | B-verbal raw, 5:1 | 1,897 → 1,636 | 1871.1 → 1504.2 |
+  | B-verbal raw, 10:1 | 1,636 → 395 | 2826.1 → 1297.4 |
+
+  The 10:1 headline rows, A isotonic and B-logprob isotonic, are unchanged. This was checked by
+  recomputing both from the saved files, not assumed. B-verbal raw is the row materially
+  affected: its 0.9 and 0.8 answers had been auto-routed at the threshold.
+- **Status.** At the T2b merge the "Not yet measured" line above was true. Since then the
+  30-ticket smoke and the full validation run (2,001 tickets, prompt frozen before it started)
+  have been made, on the validation split only. The official test split has not been touched.
+
 ---
 
 ## Rejected approaches

@@ -6,9 +6,10 @@ With ``confidence`` the probability of the predicted class, the rule is::
     auto-route  iff  (1 - confidence) * misroute_cost < handoff_cost
 
 The inequality is strict, so a ticket whose expected misroute cost equals the handoff
-cost is handed off. Every handed-off ticket costs ``handoff``; every auto-routed ticket
-that is wrong costs ``misroute``; the router's own inference cost is charged on every
-ticket, because it runs on the tickets it hands off too.
+cost is handed off; "equals" means within :data:`BOUNDARY_TOLERANCE` (relative), so the
+decision does not depend on floating-point rounding. Every handed-off ticket costs
+``handoff``; every auto-routed ticket that is wrong costs ``misroute``; the router's own
+inference cost is charged on every ticket, because it runs on the tickets it hands off too.
 
 The headline cost ratio ``misroute : handoff`` of 10 : 1 is an **assumption**, not a
 measurement. :data:`SENSITIVITY_RATIOS` lists the ratios swept around it.
@@ -22,6 +23,11 @@ import numpy as np
 
 HEADLINE_RATIO = 10
 SENSITIVITY_RATIOS = (2, 5, 10, 20)
+
+# A confidence within this relative distance of the threshold is treated as equal to it, and
+# so handed off. It makes the strict inequality hold for decimal-looking values such as the
+# 0.8, 0.9 and 0.95 a model states, whose floating-point products are off by about 1e-16.
+BOUNDARY_TOLERANCE = 1e-9
 
 
 @dataclass(frozen=True)
@@ -53,7 +59,10 @@ def auto_route(confidence: np.ndarray, cost: RoutingCost) -> np.ndarray:
     confidence = np.asarray(confidence, dtype=float)
     if np.any((confidence < 0.0) | (confidence > 1.0)) or np.any(np.isnan(confidence)):
         raise ValueError("confidence must lie in [0, 1]")
-    return (1.0 - confidence) * cost.misroute < cost.handoff
+    # Strict, with a relative tolerance: ``1 - 0.9`` is not exactly ``0.1`` in floating point,
+    # so a bare ``<`` would auto-route a confidence of exactly 0.9 at 10 : 1 but hand off 0.95
+    # at 20 : 1. Anything within BOUNDARY_TOLERANCE of the threshold counts as on it.
+    return (1.0 - confidence) * cost.misroute < cost.handoff * (1.0 - BOUNDARY_TOLERANCE)
 
 
 def confidence_threshold(cost: RoutingCost) -> float:

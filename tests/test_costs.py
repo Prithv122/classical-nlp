@@ -24,6 +24,22 @@ def test_equality_at_the_boundary_hands_off():
     assert not costs.auto_route(np.array([0.75]), COST)[0]
 
 
+@pytest.mark.parametrize(
+    ("confidence", "ratio"), [(0.5, 2), (0.8, 5), (0.9, 10), (0.95, 20), (0.99, 100)]
+)
+def test_decimal_valued_boundary_hands_off_at_every_ratio(confidence, ratio):
+    # Not dyadic: 0.8 at 5:1, 0.9 at 10:1 and 0.99 at 100:1 sit within ~1e-16 of the boundary,
+    # and a bare `<` auto-routed them while handing off 0.95 at 20:1.
+    assert not costs.auto_route(np.array([confidence]), costs.RoutingCost.from_ratio(ratio))[0]
+
+
+@pytest.mark.parametrize(("confidence", "ratio"), [(0.8, 5), (0.9, 10), (0.95, 20)])
+def test_just_either_side_of_a_decimal_boundary(confidence, ratio):
+    cost = costs.RoutingCost.from_ratio(ratio)
+    above, below = confidence + 1e-6, confidence - 1e-6
+    assert costs.auto_route(np.array([above, below]), cost).tolist() == [True, False]
+
+
 def test_either_side_of_the_boundary():
     assert costs.auto_route(np.array([0.8, 0.5]), COST).tolist() == [True, False]
 
