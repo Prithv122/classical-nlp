@@ -1,7 +1,7 @@
 [project]
 name = "classical-nlp"
 version = "0.1.0"
-description = "TF-IDF vs embeddings on multilingual text, with topic modelling and honest evaluation"
+description = "TF-IDF vs embeddings on multilingual text, topic modelling, and a cost-priced TF-IDF vs local-LLM ticket-router study, each with honest evaluation"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

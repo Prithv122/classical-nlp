@@ -220,6 +220,48 @@
 - **Not yet measured.** `route-report` has not been run on real per-ticket files, no comparison
   has been computed on Banking77, and the official test split has not been touched.
 
+### 2026-10-04 — v2 router study, final evaluation on the official test split
+
+The state described in the T3 entry above held until this entry: the test split was scored
+afterwards, once, under a protocol committed first.
+
+- **Freeze, then run.** The implementation was frozen at `73a6808` (arm C stub) and the
+  protocol at `ad6ccdd`: `FINAL_EVAL.md` records the data checksums, the model and its Ollama
+  digest, the exact commands, H1 and H2, the failure rules and the reporting rules, and adds
+  `scripts/audit_runs.py`. No smoke or partial run touched the test split before it.
+- **What broke during the run.** Arm A ran once without incident. Arm B had been started as a
+  background process with a 2-hour limit and was stopped at that limit with 1,139 of 3,080 test
+  responses in the cache, before the save step. It was logged first, then resumed with the
+  identical command under the protocol's one allowed continuation: the completed responses were
+  reused byte-for-byte from the append-only cache, and the remaining tickets got their first
+  responses under the same frozen settings. The terminal used for the resume did not accept a
+  pipe, so the console log was captured with a redirect instead of `Tee-Object`; every `route`
+  argument was identical. Both deviations are in the evaluation log in `FINAL_EVAL.md`.
+- **Audit before results.** `audit_runs.py` ran once after both runs and before the report:
+  14 passed, 0 failed (keys, split, six runs, dense indices, pinned labels, raw/isotonic
+  agreement, confidence range, abstention confidence, timings, token fields, cache prefix
+  byte-identical, cache lines parse, unique keys). It computes no result statistic.
+- **Evidence.** The nine `route-report --final` files are committed byte-identical under
+  `results/final/report_test/` with the unchanged hash manifest `results/final/SHA256SUMS`,
+  which also identifies the untracked per-ticket runs and logs. `report.md` is written with
+  CRLF endings and the repository converts line endings, so a clone would have had different
+  bytes and failed the hash check; `.gitattributes` stores `results/final/` as-is, and a fresh
+  clone was checked 9 of 9.
+- **Claims.** Before any public text was written, every CSV row was re-derived from its own
+  counts (0 mismatches) and the allowed wording was fixed in `results/final/CLAIMS.md`. The
+  README, interview notes and resume bullet take their numbers only from it.
+- **Result, in one line.** At 10:1, calibrated A cost 589.0 per 1,000 tickets against 939.0 for
+  calibrated B-logprob (−350.0, 95% CI [−397.7, −299.3], p < 0.001, excluding compute). A won
+  by auto-routing far more tickets (54.7% vs 11.0%), not by misrouting fewer (42 vs 15). Raw
+  confidence favoured B on calibration; A was better calibrated only after isotonic.
+- **Two wording corrections made during the review.** The protocol's reporting rule describes
+  the bootstrap floor as "about 1/2,000"; the code returns exactly 0 when no resample crosses
+  zero and implements no finer bound, so public text says `p < 0.001` and nothing finer. And
+  the protocol justifies the continuation partly by temperature 0; the reason that actually
+  holds is that completed responses are reused from the cache. The protocol text itself stays
+  as committed.
+- **Not measured.** Arm C; any compute price; any other LLM, prompt or decoding setup.
+
 ---
 
 ## Rejected approaches
@@ -241,3 +283,6 @@
 - [ ] BERTopic as an optional backend alongside the hand-written NMF + c-TF-IDF path, so the two can be compared on the same coherence metric.
 - [ ] Character n-grams win here; is that a morphology effect or a robustness-to-typos effect? Splitting that apart needs a corpus with controlled noise.
 - [ ] Coherence is measured on the same corpus the topics were fitted on. An external reference corpus would be the stricter test.
+- [ ] Router: would constrained decoding (the reply is always a listed intent) remove arm B's 5.4% abstentions, and how much of the cost gap is that? A new protocol and a fresh held-out set, not a re-run of this one.
+- [ ] Router: a larger or unquantised LLM, or a few-shot prompt, is a different configuration and needs its own frozen evaluation.
+- [ ] Router: refitting the isotonic calibrators inside each bootstrap resample would widen the intervals to include calibration uncertainty.
