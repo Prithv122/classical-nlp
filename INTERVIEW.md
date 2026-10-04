@@ -61,6 +61,68 @@ optimistic.
 
 ---
 
+## Router study
+
+### Q6. Walk me through the router study. What question does it answer, and how?
+
+_A:_ Should a support ticket be routed by a small supervised classifier or by an LLM? Arm A
+is word TF-IDF plus logistic regression, trained on 8,002 Banking77 tickets. Arm B is a local
+7B model — `qwen2.5:7b-instruct` at 3-bit, through Ollama — prompted zero-shot with all 77
+intents. Both return a label and a confidence, and the same isotonic calibration step, fitted
+on 2,001 validation tickets, is applied to both. The decision is costed: a ticket is
+auto-routed only if (1 − confidence) × ratio < 1, otherwise it goes to a human. A handoff
+costs 1 unit and a misroute costs the ratio, 10 at the headline. The metric is routing
+decision cost per 1,000 tickets, excluding compute, compared with a paired bootstrap on the
+3,080-ticket official test split, which was scored once under a protocol committed beforehand.
+
+### Q7. Which router won, and why?
+
+_A:_ The TF-IDF router: 589.0 against 939.0 per 1,000 tickets at 10:1, a difference of −350.0
+with a 95% CI of [−397.7, −299.3], p < 0.001, excluding compute. The mechanism is the part I
+would stress: A did not win by making fewer mistakes. It misrouted 42 tickets to B's 15. It
+won because it auto-routed 1,686 tickets, 54.7%, while the calibrated LLM cleared the 0.9 bar
+on only 338, 11.0%, and handed the rest to a human. The supporting accuracy evidence points
+the same way — on an exact McNemar test, 937 tickets only A got right against 135 only B got
+right — and A was lower than B at all four cost ratios under both calibrations.
+
+### Q8. So TF-IDF beats LLMs?
+
+_A:_ No, and I would not say that. This is one LLM configuration: one 3-bit 7B model,
+zero-shot, one prompt, strict parsing, so 5.4% of its replies did not name a valid intent and
+became handoffs. The supervision is unequal by design — A learned from 8,002 labelled tickets
+and B from none. Compute is excluded from the cost, the 10:1 ratio is an assumption rather
+than a measured cost, and it is one dataset. What the study does show is narrower: for this
+task and this setup, a cheap supervised baseline with calibrated confidence had the lower
+routing cost, and the break-even analysis found no setting where B was cheaper even
+before compute. A dedicated decision model, arm C, was planned and is reported as not
+evaluated.
+
+### Q9. Why does calibration matter here, and what did you find?
+
+_A:_ The routing rule reads the confidence directly, so a miscalibrated confidence is a wrong
+decision, not just a bad chart. The raw confidences were badly off in opposite directions: A
+was under-confident, with ECE 0.404, and B-logprob over-confident, with ECE 0.244 — so on raw
+confidence, B was actually the better-calibrated arm. After isotonic calibration A reached
+0.007 and B 0.026; the difference, −0.019, had a 95% CI of [−0.030, −0.002] with p = 0.027,
+an interval that narrowly excluded zero. It changed the costs a lot: A's 10:1 cost went from
+970.1 raw to 589.0 calibrated, and raw B-logprob at 5, 10 and 20:1 cost more than sending
+every ticket to a human.
+
+### Q10. How do you know you didn't tune on the test set?
+
+_A:_ The method was frozen in two commits before the test split was scored: the implementation,
+then a protocol file listing the data checksums, the model and its digest, the exact commands,
+the hypotheses and the reporting rules, including that a p-value shown as 0.000 is written
+p < 0.001. It also banned smoke runs on test. Development used only the validation split —
+that is where I found and fixed a floating-point bug at the routing threshold, before anything
+was frozen. The test split was run once; when the LLM run was interrupted, I logged it and
+resumed with the identical command, which the protocol allowed because every completed
+response was reused byte-for-byte from the append-only cache. An integrity audit — row counts,
+labels, cache prefix unchanged — passed 14 of 14 before the report was generated, and the
+report files are committed with their SHA-256 hashes.
+
+---
+
 ## 30-second pitch
 
 A comparison of classical text representations done so that it can produce a negative
@@ -70,3 +132,10 @@ beat TF-IDF. Underneath it is a text-normalisation layer that gets Devanagari an
 right — including the bug where Python's `\w` silently deletes every combining mark — and a
 topic model whose labels went from "the, of, to" to "god, jesus, christ" once the c-TF-IDF
 weighting was fixed, caught by tracking NPMI coherence rather than by reading word lists.
+
+The second part is a cost-priced router study on Banking77, with the protocol committed
+before the test split was scored once. On 3,080 held-out tickets at a 10:1
+misroute-to-handoff ratio, a calibrated TF-IDF router cost 589 handoff-units per 1,000 tickets
+against 939 for a calibrated local 7B LLM router — difference −350, 95% CI −397.7 to −299.3,
+p < 0.001, excluding compute. It won by automating far more tickets, not by misrouting fewer,
+and it is one LLM configuration, not a verdict on LLMs.
