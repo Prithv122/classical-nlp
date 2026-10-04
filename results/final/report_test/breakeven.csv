@@ -1,0 +1,17 @@
+arm_b,calibration,ratio,advantage_per_ticket,breakeven_per_ticket,b_mean_seconds,breakeven_per_second,status
+B-logprob,raw,2,-0.1243506494,,4.147196378,,A cheaper before compute
+B-logprob,raw,5,-0.3717532468,,4.147196378,,A cheaper before compute
+B-logprob,raw,10,-0.9646103896,,4.147196378,,A cheaper before compute
+B-logprob,raw,20,-1.974675325,,4.147196378,,A cheaper before compute
+B-logprob,isotonic,2,-0.3756493506,,4.147196378,,A cheaper before compute
+B-logprob,isotonic,5,-0.3857142857,,4.147196378,,A cheaper before compute
+B-logprob,isotonic,10,-0.35,,4.147196378,,A cheaper before compute
+B-logprob,isotonic,20,-0.261038961,,4.147196378,,A cheaper before compute
+B-verbal,raw,2,-0.1535714286,,4.147196378,,A cheaper before compute
+B-verbal,raw,5,-0.4720779221,,4.147196378,,A cheaper before compute
+B-verbal,raw,10,-0.1944805195,,4.147196378,,A cheaper before compute
+B-verbal,raw,20,-0.005519480519,,4.147196378,,A cheaper before compute
+B-verbal,isotonic,2,-0.4042207792,,4.147196378,,A cheaper before compute
+B-verbal,isotonic,5,-0.4691558442,,4.147196378,,A cheaper before compute
+B-verbal,isotonic,10,-0.3655844156,,4.147196378,,A cheaper before compute
+B-verbal,isotonic,20,-0.2850649351,,4.147196378,,A cheaper before compute

@@ -1,0 +1,2 @@
+# Final held-out evidence: stored byte-for-byte so it matches results/final/SHA256SUMS
+results/final/** -text
