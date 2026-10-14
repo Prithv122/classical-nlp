@@ -38,6 +38,9 @@ class Usage:
     prompt_tokens: np.ndarray | None = None
     cached_prompt_tokens: np.ndarray | None = None
     output_tokens: np.ndarray | None = None
+    # One dict per ticket, merged into that ticket's saved row. A and B leave it None, so their
+    # rows keep exactly the eleven v2 keys.
+    row_extras: tuple[dict, ...] | None = None
 
 
 @runtime_checkable

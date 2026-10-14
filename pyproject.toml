@@ -34,6 +34,9 @@ embeddings = [
 router = [
     "matplotlib>=3.9",
 ]
+secrets = [
+    "keyring>=25",
+]
 
 [dependency-groups]
 dev = [

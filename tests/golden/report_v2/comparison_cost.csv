@@ -1,0 +1,17 @@
+pair,arm_a,arm_b,calibration,ratio,cost_a,cost_b,difference,ci_low,ci_high,p_value,headline
+A vs B-logprob,A,B-logprob,raw,2,1000,1083.333333,-83.33333333,-416.6666667,333.3333333,0.872,false
+A vs B-logprob,A,B-logprob,raw,5,1000,1333.333333,-333.3333333,-1000,0,0.656,false
+A vs B-logprob,A,B-logprob,raw,10,1000,1000,0,0,0,1,false
+A vs B-logprob,A,B-logprob,raw,20,1000,1000,0,0,0,1,false
+A vs B-logprob,A,B-logprob,isotonic,2,83.33333333,1000,-916.6666667,-1000,-750,0,false
+A vs B-logprob,A,B-logprob,isotonic,5,83.33333333,1000,-916.6666667,-1000,-750,0,false
+A vs B-logprob,A,B-logprob,isotonic,10,250,1000,-750,-916.6666667,-500,0,true
+A vs B-logprob,A,B-logprob,isotonic,20,250,1000,-750,-916.6666667,-500,0,false
+A vs B-verbal,A,B-verbal,raw,2,1000,1250,-250,-750,250,0.396,false
+A vs B-verbal,A,B-verbal,raw,5,1000,1666.666667,-666.6666667,-1666.666667,0,0.228,false
+A vs B-verbal,A,B-verbal,raw,10,1000,1000,0,0,0,1,false
+A vs B-verbal,A,B-verbal,raw,20,1000,1000,0,0,0,1,false
+A vs B-verbal,A,B-verbal,isotonic,2,83.33333333,1000,-916.6666667,-1000,-750,0,false
+A vs B-verbal,A,B-verbal,isotonic,5,83.33333333,1000,-916.6666667,-1000,-750,0,false
+A vs B-verbal,A,B-verbal,isotonic,10,250,1000,-750,-916.6666667,-500,0,false
+A vs B-verbal,A,B-verbal,isotonic,20,250,1000,-750,-916.6666667,-500,0,false

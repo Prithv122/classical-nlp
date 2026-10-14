@@ -3,7 +3,14 @@
 from __future__ import annotations
 
 from .base import ABSTAIN, Router, Usage, check_output
-from .decision_arm import DecisionArm, NotAvailable
+from .decision_arm import (
+    DecisionArm,
+    DecisionClient,
+    DecisionError,
+    FakeDecisionProvider,
+    decision_arms,
+    fake_decision_response,
+)
 from .llm_arm import (
     Completion,
     FakeLLM,
@@ -23,16 +30,20 @@ __all__ = [
     "ARMS",
     "Completion",
     "DecisionArm",
+    "DecisionClient",
+    "DecisionError",
+    "FakeDecisionProvider",
     "FakeLLM",
     "LLMArm",
     "LLMClient",
-    "NotAvailable",
     "ProviderError",
     "ResponseCache",
     "Router",
     "TfidfArm",
     "Usage",
     "check_output",
+    "decision_arms",
     "fake_completion",
+    "fake_decision_response",
     "llm_arms",
 ]

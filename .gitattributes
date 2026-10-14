@@ -1,2 +1,6 @@
 # Final held-out evidence: stored byte-for-byte so it matches results/final/SHA256SUMS
 results/final/** -text
+# Golden report outputs: stored byte-for-byte so the comparison is exact on every platform
+tests/golden/** -text
+# Frozen held-out partition: stored byte-for-byte so it matches the registered SHA-256
+data/partitions/** -text

@@ -262,6 +262,71 @@ afterwards, once, under a protocol committed first.
   as committed.
 - **Not measured.** Arm C; any compute price; any other LLM, prompt or decoding setup.
 
+### 2026-10-14 — arm C study, G1: partition, Jev client, report and audit extensions
+
+Implements gate G1 of `ARM_C_PROTOCOL.md` (the implementation freeze). The protocol text is unchanged.
+
+- **Partition.** `src/classicalnlp/partition.py` implements protocol Steps 1 to 3 (V is exactly
+  `validation_split`'s validation rows, in order). `scripts/make_abc_partition.py` writes or checks
+  `data/partitions/abc_heldout.csv` (2,002 rows, 15,526 bytes, stored byte-for-byte via
+  `.gitattributes`), SHA-256 `0b64a728f7f10a633bc8a8fd482f9993302299f8eb823318f98142a343a1e814`,
+  the registered value. The loader refuses a different checksum or row count, and `abc_corpora`
+  refuses unless the recipe and the file give the same H. The partition code reads the train file
+  only.
+- **Arm C client.** `router/decision_arm.py` (cache, ledger, retries, caps, version check, both
+  variants, fakes) and `router/typesafe.py` (stdlib transport, credentials). The cache is
+  append-only JSONL keyed by endpoint identity, `jev-1.13.0` and the canonical request, and keeps
+  each response's original seconds. The ledger has one line per HTTP attempt. Caps are $2.00 per
+  run and $5.00 per study; the guard is 4,000 input tokens; at most 5 attempts per ticket with
+  injected sleep.
+- **Route.** `route --partition abc` with `--split val|heldout`: A is refit on F' (6,000 rows) and
+  the evaluated set is labelled `heldout`; the official test split and `--fixture` are refused. Arm
+  C needs `--cache` and `--ledger`, and a heldout run is refused unless every V request is already
+  cached. `jev-probe` (the protocol's 20 V rows, then a cache-bypassing repeat for self-agreement)
+  and `jev-rtt` (unbilled `GET /v1/models` round trips) are the tools for G2 and G3.
+- **Report and audit.** `route-report` has an abc layout for heldout runs (disclaimer, pairs with
+  the first arm minus the second, H1 to H4, transport failures, argmax statuses, C spend); the v2
+  layout is pinned byte-for-byte by golden files in `tests/golden/report_v2/`. `audit_runs.py
+  --partition abc` checks the ten runs, the 17 keys of C rows, one endpoint and version per C run,
+  the transport-failure rules, and repeatable `--cache-check` prefixes.
+- **D1.** Only the TypeSafe direct route has a transport, behind a `DecisionProvider` protocol so
+  another route can be added later; no Cloudflare adapter (its schema is undocumented).
+- **D4.** Retry on 429, 500, 502, 503, 504, 529, a 30 s timeout or a dropped connection, with
+  1, 2, 4, 8 s backoff; 401/403 stop the run; any other failure is a transport failure, scored
+  ABSTAIN at 0.0, flagged and not cached, so the identical command retries it.
+- **D5.** A response whose `model` is missing or not `jev-1.13.0`, whose `usage.input_tokens` is
+  missing, or that reports over 4,000 input tokens stops the run after its ledger line is written.
+- **D6.** H3's accuracy table uses 10 equal-width bins of [0, 1], the same bins as ECE.
+- **Fixed after a fresh-context review, before the freeze.** (1) A key with a trailing newline
+  made `http.client` raise an error quoting the `Authorization` header, which the CLI printed:
+  the key is now stripped, a key with whitespace or control characters inside is refused without
+  being quoted, and any header error is replaced by one without its message, raised outside the
+  `except` block so the original is not even kept as `__context__`. (2) Usable probabilities
+  were summed and ranked over every key, so an extra key could hide a bad sum or win the argmax:
+  only the 77 names count now, and other keys are ignored. (3) The report priced C's spend at the
+  default rate whatever the run used: `route-report --price-per-mtok` now sets it. (4) A
+  mistyped `--ledger` path silently restarted the $5 study total at $0: a ledger that does not
+  exist is refused unless `--new-ledger` marks the study's first run (which is refused on an
+  existing file), and every run prints the study total so far. (5) A held-out abc audit now
+  requires `--cache-check` for both arm B and arm C (G6). The cache keeps the first response
+  stored for a ticket, as the protocol says. Each fix has a test that fails on the code before it.
+- **Known limitations, left as frozen.** (1) A hard kill can leave a half-written last line in a
+  cache: the client skips it and the identical command resumes, but the audit's "every cache line
+  parses" check then fails, so an interruption has to be logged as the protocol's failure rules
+  say. (2) A 200 response whose body is not JSON is a transport failure logged at $0, although
+  the provider probably billed it; the dashboard figure after each run is the check on that.
+  (3) `route` does not print a cache's byte length and SHA-256 after a V run; they are recorded
+  by hand (`wc -c`, `sha256sum`) before the H run. (4) Run rows do not record their partition, so
+  an abc run on V and a v2 run on V are told apart by file name only. None of these is changed
+  after the freeze except through a dated protocol amendment.
+- **Not done.** No call was made to any TypeSafe or Cloudflare endpoint (this environment has no
+  key), and no row of H was scored by any arm. A wiring smoke of arm A on 50 rows of V (the
+  calibration set) was run, and its output was not saved.
+- **Untested against the real API.** The transport's wire format (request body, headers, response
+  fields, status handling, the models-list path used by `jev-rtt`) follows the documented schema
+  and is exercised only against fake connections. The keyring lookup is exercised only against a
+  fake module.
+
 ---
 
 ## Rejected approaches

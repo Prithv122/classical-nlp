@@ -1,15 +1,22 @@
 """Console entry point: compare, leakage, topics, normalize, tickets-download,
-tickets-summary, route."""
+tickets-summary, route, route-report, jev-probe, jev-rtt."""
 
 from __future__ import annotations
 
 import argparse
+import json
+import statistics
 import sys
+from pathlib import Path
 
-from . import data, evaluate, report, router, study, tickets, topics, vectorizers
+import numpy as np
+
+from . import data, evaluate, partition, report, router, study, tickets, topics, vectorizers
 from .normalize import detect_script, normalize, tokenize
+from .router import decision_arm as dec
 from .router.llm_arm import LLMClient, Provider, ResponseCache, llm_arms
 from .router.ollama import DEFAULT_HOST, DEFAULT_MODEL, OllamaProvider
+from .router.typesafe import TypeSafeProvider
 
 
 def _stdout_utf8() -> None:
@@ -144,13 +151,44 @@ def _make_provider(args: argparse.Namespace) -> Provider:
     return OllamaProvider(args.model or DEFAULT_MODEL, args.host)
 
 
+def _make_decision_provider(args: argparse.Namespace) -> dec.DecisionProvider:
+    """The route behind arm C. Constructing it makes no connection and reads no credential;
+    tests replace this."""
+    return TypeSafeProvider()
+
+
+def _abc_corpora(args: argparse.Namespace) -> tuple[data.Corpus, data.Corpus, data.Corpus]:
+    """``(F', V, H)`` for the arm C partition; reads the train file only. Tests replace this."""
+    return partition.abc_corpora(partition.load_train(args.data_dir))
+
+
 def _check_route_args(args: argparse.Namespace) -> None:
     """Refuse bad combinations before any data is loaded or any model is called."""
-    if args.arm == "B":
+    abc = args.partition == "abc"
+    if args.arm == "C":
+        if not abc:
+            raise ValueError("arm C is evaluated on the abc partition only: add --partition abc")
         if not args.cache:
-            raise ValueError("arm B needs --cache PATH: a slow run must never be repeated")
-    elif args.model is not None or args.cache is not None:
-        raise ValueError("--model and --cache apply to arm B only")
+            raise ValueError("arm C needs --cache PATH: a paid call must never be repeated")
+        if not args.ledger:
+            raise ValueError("arm C needs --ledger PATH: every attempt is logged")
+        if args.model is not None:
+            raise ValueError("--model applies to arm B only")
+    else:
+        if args.arm == "B":
+            if not args.cache:
+                raise ValueError("arm B needs --cache PATH: a slow run must never be repeated")
+        elif args.model is not None or args.cache is not None:
+            raise ValueError("--model and --cache apply to arm B only")
+        if args.ledger:
+            raise ValueError("--ledger applies to arm C only")
+    if abc:
+        if args.split == "test":
+            raise ValueError("the official test split is not read by this study")
+        if args.fixture:
+            raise ValueError("--partition abc needs the real Banking77 train file, not the fixture")
+    elif args.split == "heldout":
+        raise ValueError("--split heldout needs --partition abc")
     if args.limit is not None:
         if args.limit < 1:
             raise ValueError("--limit must be at least 1")
@@ -158,12 +196,56 @@ def _check_route_args(args: argparse.Namespace) -> None:
             raise ValueError(
                 "--limit is for smoke runs on the validation split; the test split is run whole"
             )
+        if args.split == "heldout":
+            raise ValueError("--limit is for smoke runs on the validation split; H is run whole")
+
+
+def _require_v_cached(client: dec.DecisionClient, val: data.Corpus, path: str) -> None:
+    """A heldout run must make no V call: every V request is already in the cache."""
+    identity = client.provider.identity
+    missing = sum(
+        client.cache.get(dec.cache_key(identity, dec.build_request(text))) is None
+        for text in val.documents
+    )
+    if missing:
+        raise ValueError(
+            f"a heldout run makes no V call: {missing} of {len(val)} V requests are not in "
+            f"the cache {path}; finish the --split val run first"
+        )
+
+
+def _open_ledger(args: argparse.Namespace) -> dec.Ledger:
+    """The study's one spend ledger. A path that does not exist is refused unless
+    ``--new-ledger`` says this is the study's first ledger, so a mistyped path can never
+    restart the study total at $0; ``--new-ledger`` on an existing file is refused too."""
+    path = Path(args.ledger)
+    if args.new_ledger and path.exists():
+        raise ValueError(f"--new-ledger given but {path} already exists; drop the flag")
+    if not args.new_ledger and not path.exists():
+        raise ValueError(
+            f"ledger {path} does not exist: every run must use the study's one ledger "
+            "(pass --new-ledger only for the study's first run)"
+        )
+    ledger = dec.Ledger(path)
+    print(
+        f"ledger {path}: study total so far ${ledger.study_total:.4f} of ${dec.STUDY_CAP_USD:.2f}"
+    )
+    return ledger
 
 
 def cmd_route(args: argparse.Namespace) -> int:
     _check_route_args(args)
     test = None
-    if args.fixture:
+    split_name = "test"
+    if args.partition == "abc":
+        fit, val, heldout = _abc_corpora(args)
+        print(
+            f"source: Banking77 train split ({tickets.BANKING77_LICENCE}), {args.data_dir}; "
+            "abc partition (fit F', validation V, held-out H)"
+        )
+        if args.split == "heldout":
+            test, split_name = heldout, "heldout"
+    elif args.fixture:
         if args.split == "test":
             raise ValueError("the fixture has no held-out test split; use --split val")
         fit, val = tickets.validation_split(tickets.load_fixture())
@@ -194,9 +276,20 @@ def cmd_route(args: argparse.Namespace) -> int:
         for arm in llm_arms(client):
             runs += study.run_arm(arm, fit, val, test)
         label = "B (variants B-logprob, B-verbal)"
+    elif args.arm == "C":
+        cache, ledger = dec.DecisionCache(args.cache), _open_ledger(args)
+        client = dec.DecisionClient(
+            _make_decision_provider(args), cache, ledger, price_per_mtok=args.price_per_mtok
+        )
+        if args.split == "heldout":
+            _require_v_cached(client, val, args.cache)
+        runs = []
+        for arm in dec.decision_arms(client):
+            runs += study.run_arm(arm, fit, val, test, split_name=split_name)
+        label = "C (variants C-prob, C-vendor)"
     else:
         arm = router.ARMS[args.arm]()
-        runs = study.run_arm(arm, fit, val, test)
+        runs = study.run_arm(arm, fit, val, test, split_name=split_name)
         label = arm.name
     evaluated = test if test is not None else val
     print(
@@ -205,7 +298,7 @@ def cmd_route(args: argparse.Namespace) -> int:
     )
     print(study.format_runs(runs))
     print(study.format_usage(runs))
-    if client is not None:
+    if args.arm == "B":
         print(
             f"llm calls: {client.calls} made, {client.hits} reused from the cache or the "
             f"other variant (cache: {args.cache})"
@@ -215,6 +308,22 @@ def cmd_route(args: argparse.Namespace) -> int:
         print(
             "latency is the model-side time Ollama reports, load time excluded, "
             "as recorded when each response was first generated"
+        )
+    if args.arm == "C":
+        print(
+            f"jev requests: {client.calls} sent ({client.attempts} attempts), {client.hits} "
+            f"reused from the cache or the other variant (cache: {args.cache})"
+        )
+        if cache.skipped > 0:
+            print(f"cache: {cache.skipped} lines skipped")
+        print(
+            f"transport failures: {client.transport_failures}; spend this run "
+            f"${ledger.run_total:.4f}, study total ${ledger.study_total:.4f} of "
+            f"${dec.STUDY_CAP_USD:.2f} (ledger: {args.ledger})"
+        )
+        print(
+            "latency is client-side wall-clock of the successful attempt, "
+            "as recorded when each response was first fetched"
         )
     if args.save:
         print(f"saved {study.save_runs(runs, args.save)} rows to {args.save}")
@@ -231,10 +340,102 @@ def cmd_route_report(args: argparse.Namespace) -> int:
         source_note=args.source_note,
         iterations=args.iterations,
         plots=not args.no_plots,
+        price_per_mtok=args.price_per_mtok,
     )
     print(f"wrote {len(written)} files to {args.out}")
     for path in written:
         print(path.name)
+    return 0
+
+
+def probe_positions(n: int, k: int = 20) -> np.ndarray:
+    """Positions of the probe rows in V: the protocol's seeded draw."""
+    return np.random.default_rng(partition.ABC_SEED).choice(n, k, replace=False)
+
+
+def _log_response(path: str, kind: str, key: str, r: dec.DecisionResponse) -> None:
+    record = {"kind": kind, "key": key, "response": r.body, "model_version": r.model_version}
+    record |= {"input_tokens": r.input_tokens, "output_tokens": r.output_tokens}
+    record |= {"seconds": r.seconds, "cold_start": r.cold_start, "attempts": r.attempts}
+    record["transport_failure"] = r.transport_failure
+    dec.append_line(path, json.dumps(record))
+
+
+def cmd_jev_probe(args: argparse.Namespace) -> int:
+    """G2 tool: 20 probe rows of V into the cache, then the same 20 again for self-agreement."""
+    ledger = _open_ledger(args)  # first, so a wrong ledger path fails before any data loads
+    _, val, _ = _abc_corpora(args)
+    requests = [dec.build_request(val.documents[i]) for i in probe_positions(len(val))]
+    client = dec.DecisionClient(
+        _make_decision_provider(args),
+        dec.DecisionCache(args.cache),
+        ledger,
+        price_per_mtok=args.price_per_mtok,
+        kind="probe",
+    )
+    first = [client.decide(request) for request in requests]
+    second = []
+    for request in requests:
+        r = client.decide(request, kind="self_agreement", use_cache=False)
+        _log_response(
+            args.log, "self_agreement", dec.cache_key(client.provider.identity, request), r
+        )
+        second.append(r)
+
+    names = list(tickets.BANKING77_INTENTS)
+
+    def answer(r):
+        """``(choice, probabilities)`` when the response passes the schema check, else None."""
+        if dec.parse_answer(r.body, names)[0] is None:
+            return None
+        intent = r.body["answers"]["intent"]
+        return intent["choice"], intent["probabilities"]
+
+    ok = [r for r in first if not r.transport_failure]
+    versions = sorted({r.model_version for r in ok + second if r.model_version})
+    schema = [sum(answer(r) is not None for r in rs) for rs in (first, second)]
+    pairs = [(answer(a), answer(b)) for a, b in zip(first, second, strict=True)]
+    pairs = [(a, b) for a, b in pairs if a and b]
+    same = sum(a[0] == b[0] for a, b in pairs)
+    largest = max((abs(a[1][n] - b[1][n]) for a, b in pairs for n in names), default=0.0)
+    n = len(requests)
+    print(f"reported version: {', '.join(versions) or 'none'}")
+    print(f"schema check: {schema[0]}/{n} first pass, {schema[1]}/{n} second pass")
+    if ok:
+        print(f"median input_tokens: {statistics.median(r.input_tokens for r in ok)}")
+        print(f"p50 latency: {statistics.median(r.seconds for r in ok):.3f} s")
+    print(f"same choice: {same}/{n}; largest absolute probability difference: {largest:.6f}")
+    ledger = client.ledger
+    print(f"spend this run ${ledger.run_total:.4f}; study total ${ledger.study_total:.4f}")
+    passed = versions == [dec.REQUESTED_MODEL] and schema == [n, n]
+    print("G2 checks: " + ("pass" if passed else "FAIL"))
+    return 0 if passed else 1
+
+
+def cmd_jev_rtt(args: argparse.Namespace) -> int:
+    """Baseline round trip: n unbilled GET /v1/models requests on one persistent connection."""
+    if args.n < 1:
+        raise ValueError("--n must be at least 1")
+    provider, ledger, times = _make_decision_provider(args), _open_ledger(args), []
+    for attempt in range(1, args.n + 1):
+        try:
+            status, seconds = provider.ping()
+        except dec.AttemptFailed as failure:
+            status, seconds = failure.status or failure.error, None
+        ledger.add("rtt", None, attempt, status, None, None, 0.0)
+        dec.append_line(
+            args.log, json.dumps({"attempt": attempt, "status": status, "seconds": seconds})
+        )
+        if status in (401, 403):
+            raise dec.AuthError(f"HTTP {status}: check TYPESAFE_API_KEY")
+        if seconds is not None:
+            times.append(seconds)
+    if not times:
+        print("no request completed", file=sys.stderr)
+        return 1
+    median = statistics.median(times)
+    print(f"median round trip over {len(times)} of {args.n} requests: {median:.4f} s")
+    print("the first request includes opening the connection")
     return 0
 
 
@@ -287,13 +488,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_route = sub.add_parser("route", help="Calibrate a router arm and price its decisions")
     p_route.add_argument("--arm", choices=sorted(router.ARMS), required=True)
-    p_route.add_argument("--split", choices=("val", "test"), default="val")
+    p_route.add_argument("--split", choices=("val", "test", "heldout"), default="val")
+    p_route.add_argument(
+        "--partition",
+        choices=("v2", "abc"),
+        default="v2",
+        help="v2: the shipped study; abc: the arm C partition (fit F', validation V, held-out H)",
+    )
     route_source = p_route.add_mutually_exclusive_group(required=True)
     route_source.add_argument("--fixture", action="store_true", help="The synthetic 60-row fixture")
     route_source.add_argument("--data-dir", help="Directory holding the downloaded Banking77 CSVs")
     p_route.add_argument("--model", default=None, help=f"Arm B model (default {DEFAULT_MODEL})")
     p_route.add_argument("--host", default=DEFAULT_HOST, help="Arm B Ollama server address")
     p_route.add_argument("--cache", metavar="PATH", help="Arm B response cache (JSONL, required)")
+    p_route.add_argument("--ledger", metavar="PATH", help="Arm C spend ledger (JSONL, required)")
+    p_route.add_argument(
+        "--new-ledger",
+        action="store_true",
+        help="Create the ledger: only for the study's first paid or logged run",
+    )
+    p_route.add_argument(
+        "--price-per-mtok",
+        type=float,
+        default=dec.DEFAULT_PRICE_PER_MTOK,
+        help="Arm C price, USD per million input tokens",
+    )
     p_route.add_argument(
         "--limit", type=int, default=None, help="Smoke run: first N validation rows only"
     )
@@ -315,7 +534,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument(
         "--final", action="store_true", help="Allow runs on the official test split"
     )
+    p_report.add_argument(
+        "--price-per-mtok",
+        type=float,
+        default=dec.DEFAULT_PRICE_PER_MTOK,
+        help="Arm C price the runs were made at, USD per million input tokens",
+    )
     p_report.set_defaults(func=cmd_route_report)
+
+    p_probe = sub.add_parser("jev-probe", help="Arm C probe: 20 rows of V, then self-agreement")
+    p_probe.add_argument("--data-dir", required=True)
+    for flag in ("--cache", "--ledger", "--log"):
+        p_probe.add_argument(flag, required=True, metavar="PATH")
+    p_probe.add_argument("--price-per-mtok", type=float, default=dec.DEFAULT_PRICE_PER_MTOK)
+    p_probe.add_argument(
+        "--new-ledger",
+        action="store_true",
+        help="Create the ledger: only for the study's first paid or logged run",
+    )
+    p_probe.set_defaults(func=cmd_jev_probe)
+
+    p_rtt = sub.add_parser("jev-rtt", help="Baseline round trip to the arm C host (unbilled)")
+    for flag in ("--ledger", "--log"):
+        p_rtt.add_argument(flag, required=True, metavar="PATH")
+    p_rtt.add_argument("--n", type=int, default=20)
+    p_rtt.add_argument(
+        "--new-ledger",
+        action="store_true",
+        help="Create the ledger: only for the study's first paid or logged run",
+    )
+    p_rtt.set_defaults(func=cmd_jev_rtt)
 
     return parser
 

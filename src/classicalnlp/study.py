@@ -111,8 +111,12 @@ def run_arm(
     ratios=costs.SENSITIVITY_RATIOS,
     n_splits: int = 5,
     seed: int = RANDOM_STATE,
+    split_name: str = "test",
 ) -> list[ArmRun]:
-    """Fit on ``fit``; evaluate on ``val`` (cross-fitted) or, if given, on ``test``."""
+    """Fit on ``fit``; evaluate on ``val`` (cross-fitted) or, if given, on ``test``.
+
+    ``split_name`` is the label written for the evaluated set when ``test`` is given.
+    """
     ratios = tuple(ratios)
     if any(ratio < 1 for ratio in ratios):
         raise ValueError(
@@ -138,7 +142,7 @@ def run_arm(
         calibrator = calibrate.fit_top_label_isotonic(
             val_true[val_ok], val_pred[val_ok], val_conf[val_ok]
         )
-        split, y_true = "test", np.asarray(test.labels)
+        split, y_true = split_name, np.asarray(test.labels)
         y_pred, raw = router.predict_top(test.documents)
         usage = _usage_of(router, test.documents)
         calibrated = np.zeros(len(raw))
@@ -185,8 +189,13 @@ def format_usage(runs: list[ArmRun]) -> str:
         u = run.usage
         p50, p95 = np.percentile(u.seconds, [50, 95])
         line = f"{run.arm}: latency p50 {p50:.3f}s p95 {p95:.3f}s per ticket; "
-        if u.prompt_tokens is None or u.cached_prompt_tokens is None or u.output_tokens is None:
+        if u.prompt_tokens is None or u.output_tokens is None:
             line += "tokens n/a"
+        elif u.cached_prompt_tokens is None:
+            line += (
+                f"prompt tokens mean {np.mean(u.prompt_tokens):.0f}; "
+                f"output tokens mean {np.mean(u.output_tokens):.1f}"
+            )
         else:
             line += (
                 f"prompt tokens mean {np.mean(u.prompt_tokens):.0f} "
@@ -223,6 +232,8 @@ def save_runs(runs: list[ArmRun], path: str | Path) -> int:
                     "cached_prompt_tokens": cell(u.cached_prompt_tokens if u else None, i, int),
                     "output_tokens": cell(u.output_tokens if u else None, i, int),
                 }
+                if u and u.row_extras:
+                    row.update(u.row_extras[i])
                 handle.write(json.dumps(row) + "\n")
                 written += 1
     return written
