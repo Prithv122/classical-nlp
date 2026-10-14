@@ -6,9 +6,9 @@ One ``choice`` question per ticket; one response feeds two arms:
 * ``C-vendor`` (ablation): confidence is the response's own ``confidence`` field.
 
 Abstention follows ``ARM_C_PROTOCOL.md``. A ``choice`` that is not one of the 77 names, or
-``probabilities`` that miss a name, hold a non-number or do not sum to 1 within 1e-3 (no
-renormalisation), abstain both variants. A missing or out-of-range ``confidence`` abstains
-``C-vendor`` only.
+``probabilities`` that miss a name, hold a non-number or do not sum to 1 within 0.02 (no
+renormalisation; the vendor rounds to two decimals, amendment 7), abstain both variants. A
+missing or out-of-range ``confidence`` abstains ``C-vendor`` only.
 
 The client does the work around a provider that makes one HTTP attempt per call: the cache
 lookup, up to five attempts with exponential backoff, the transport-failure rule, the version
@@ -55,7 +55,7 @@ MAX_ATTEMPTS = 5
 TIMEOUT_SECONDS = 30.0
 BACKOFF_SECONDS = (1, 2, 4, 8)
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504, 529})
-PROBABILITY_TOLERANCE = 1e-3
+PROBABILITY_TOLERANCE = 0.02  # amendment 7; the protocol's original 1e-3 rejected rounding
 EXTRA_KEYS = (
     "endpoint",
     "model_version",
@@ -365,7 +365,8 @@ def parse_answer(body: dict | None, names: Sequence[str]):
     usable = (
         isinstance(probs, dict)
         and all(n in probs and _number(probs[n]) and 0.0 <= probs[n] <= 1.0 for n in names)
-        and abs(sum(probs[n] for n in names) - 1.0) <= PROBABILITY_TOLERANCE
+        # The 1e-9 only makes the bound inclusive: 0.98 is a deviation of 0.02 plus float noise.
+        and abs(sum(probs[n] for n in names) - 1.0) <= PROBABILITY_TOLERANCE + 1e-9
     )
     if not usable or not isinstance(choice, str) or choice not in names:
         return None, None, None, None

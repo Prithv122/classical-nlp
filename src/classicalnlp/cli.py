@@ -382,34 +382,63 @@ def cmd_jev_probe(args: argparse.Namespace) -> int:
         )
         second.append(r)
 
-    names = list(tickets.BANKING77_INTENTS)
-
-    def answer(r):
-        """``(choice, probabilities)`` when the response passes the schema check, else None."""
-        if dec.parse_answer(r.body, names)[0] is None:
-            return None
-        intent = r.body["answers"]["intent"]
-        return intent["choice"], intent["probabilities"]
-
-    ok = [r for r in first if not r.transport_failure]
-    versions = sorted({r.model_version for r in ok + second if r.model_version})
-    schema = [sum(answer(r) is not None for r in rs) for rs in (first, second)]
-    pairs = [(answer(a), answer(b)) for a, b in zip(first, second, strict=True)]
-    pairs = [(a, b) for a, b in pairs if a and b]
-    same = sum(a[0] == b[0] for a, b in pairs)
-    largest = max((abs(a[1][n] - b[1][n]) for a, b in pairs for n in names), default=0.0)
+    summary = probe_summary(first, second, list(tickets.BANKING77_INTENTS))
     n = len(requests)
-    print(f"reported version: {', '.join(versions) or 'none'}")
+    ok = [r for r in first if not r.transport_failure]
+    print(f"reported version: {', '.join(summary['versions']) or 'none'}")
+    schema = summary["schema"]
     print(f"schema check: {schema[0]}/{n} first pass, {schema[1]}/{n} second pass")
     if ok:
         print(f"median input_tokens: {statistics.median(r.input_tokens for r in ok)}")
         print(f"p50 latency: {statistics.median(r.seconds for r in ok):.3f} s")
-    print(f"same choice: {same}/{n}; largest absolute probability difference: {largest:.6f}")
+    # Self-agreement is about the model, so it reads every pair; schema validity is the line above.
+    print(
+        f"same choice: {summary['same']}/{n}; "
+        f"largest absolute probability difference: {summary['largest']:.6f}"
+    )
+    if summary["compared"] < n:
+        print(f"probability difference read on {summary['compared']}/{n} pairs")
     ledger = client.ledger
     print(f"spend this run ${ledger.run_total:.4f}; study total ${ledger.study_total:.4f}")
-    passed = versions == [dec.REQUESTED_MODEL] and schema == [n, n]
+    passed = summary["versions"] == [dec.REQUESTED_MODEL] and schema == [n, n]
     print("G2 checks: " + ("pass" if passed else "FAIL"))
     return 0 if passed else 1
+
+
+def _readable(response, names):
+    """``(choice, probabilities)`` as sent, whatever the sum, or None if either is unreadable."""
+    intent = ((response.body or {}).get("answers") or {}).get("intent")
+    if not isinstance(intent, dict) or not isinstance(intent.get("choice"), str):
+        return None
+    probs = intent.get("probabilities")
+    numbers = isinstance(probs, dict) and all(
+        isinstance(probs.get(n), int | float) and not isinstance(probs.get(n), bool) for n in names
+    )
+    return intent["choice"], (probs if numbers else None)
+
+
+def probe_summary(first, second, names):
+    """The G2 figures from the probe's two passes over the same requests.
+
+    ``schema`` counts the responses that pass the arm's usability check, per pass. ``same`` and
+    ``largest`` read every pair (a pair with an unreadable choice is not the same choice), and
+    ``largest`` only pairs whose probabilities both hold a number for each of the 77 names.
+    """
+    ok = [r for r in first if not r.transport_failure]
+    seen = [(_readable(a, names), _readable(b, names)) for a, b in zip(first, second, strict=True)]
+    same = sum(a is not None and b is not None and a[0] == b[0] for a, b in seen)
+    both = [(a[1], b[1]) for a, b in seen if a and b and a[1] is not None and b[1] is not None]
+
+    def usable(responses):
+        return sum(dec.parse_answer(r.body, names)[0] is not None for r in responses)
+
+    return {
+        "versions": sorted({r.model_version for r in ok + second if r.model_version}),
+        "schema": [usable(first), usable(second)],
+        "same": same,
+        "compared": len(both),
+        "largest": max((abs(a[n] - b[n]) for a, b in both for n in names), default=0.0),
+    }
 
 
 def cmd_jev_rtt(args: argparse.Namespace) -> int:

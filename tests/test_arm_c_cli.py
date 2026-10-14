@@ -234,6 +234,55 @@ def test_probe_fails_g2_on_a_bad_schema_and_stops_on_a_wrong_version(monkeypatch
     assert cli.main(_probe(tmp_path / "other")) == 2
 
 
+def _sparse(choice, top, other="atm_support", rest=0.0):
+    """Probabilities as the vendor sends them: mostly zeros, two decimals."""
+    return {n: 0.0 for n in NAMES} | {choice: top, other: rest}
+
+
+def test_probe_accepts_two_decimal_probabilities_that_sum_to_0_99(monkeypatch, tmp_path, capsys):
+    _use_corpora(monkeypatch, _synthetic_v())
+    shaped = _sparse("age_limit", 0.55, rest=0.44)  # sums to 0.99, as in the G2 probe
+    _use_provider(monkeypatch, lambda r: fake_decision_response("age_limit", probabilities=shaped))
+    assert cli.main(_probe(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "schema check: 20/20 first pass, 20/20 second pass" in out and "G2 checks: pass" in out
+
+
+def test_self_agreement_reads_every_pair_whatever_the_schema_says(monkeypatch, tmp_path, capsys):
+    _use_corpora(monkeypatch, _synthetic_v())
+    seen = {}
+
+    def reply(request):
+        n = seen[request["state"]] = seen.get(request["state"], 0) + 1
+        mass = _sparse("age_limit", 0.50 if n == 1 else 0.45, rest=0.30)  # sums to 0.8 and 0.75
+        return fake_decision_response("age_limit", probabilities=mass)
+
+    _use_provider(monkeypatch, reply)
+    assert cli.main(_probe(tmp_path)) == 1  # no response is usable, so G2 fails ...
+    out = capsys.readouterr().out
+    assert "schema check: 0/20 first pass, 0/20 second pass" in out and "G2 checks: FAIL" in out
+    # ... and that is reported separately from how repeatable the model was.
+    assert "same choice: 20/20; largest absolute probability difference: 0.050000" in out
+    assert "probability difference read on" not in out  # all 20 pairs were comparable
+
+
+def test_an_unreadable_second_answer_is_not_the_same_choice(monkeypatch, tmp_path, capsys):
+    _use_corpora(monkeypatch, _synthetic_v())
+    seen = {}
+
+    def reply(request):
+        n = seen[request["state"]] = seen.get(request["state"], 0) + 1
+        if n == 1:
+            return fake_decision_response("age_limit")
+        return {"model": "jev-1.13.0", "usage": {"input_tokens": 120, "output_tokens": 8}}
+
+    _use_provider(monkeypatch, reply)
+    assert cli.main(_probe(tmp_path)) == 1
+    out = capsys.readouterr().out
+    assert "same choice: 0/20" in out
+    assert "probability difference read on 0/20 pairs" in out
+
+
 def _rtt(tmp_path, *extra):
     return ["jev-rtt", "--ledger", str(tmp_path / "l.jsonl"), "--log", str(tmp_path / "r.jsonl"),
             *_first(tmp_path), *extra]  # fmt: skip

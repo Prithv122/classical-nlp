@@ -255,6 +255,7 @@ that case.
 | Probe (version, schema, median input tokens, p50 latency) | Version `jev-1.13.0` on all 40 responses. Schema check as the client reports it: 18/20 on the first pass, 16/20 on the second. Every failure is the sum rule only: all 77 names present and `choice` valid in all 40, but probabilities sum to 0.99, not 1 within 1e-3, on 2/20 first-pass rows (positions 8 and 10 of the probe list) and 4/20 second-pass rows (6, 8, 10, 12). Probabilities carry two decimals of real precision. Median input tokens 1,031 (1,023 to 1,041). p50 latency 0.345 s (first request 0.535 s, a cold start). No retries, all HTTP 200. |
 | Self-agreement (same choice n/20, largest probability difference) | The client prints "same choice 16/20, largest difference 0.010", but it compares only the 16 pairs where both responses pass the sum check. Over all 20 pairs, read back from the cache and the probe log: same `choice` 20/20, largest probability difference 0.05 (position 10, `top_up_failed`, top probability 0.19 then 0.18), next 0.03 (positions 6, 8, 12). |
 | G2 outcome | **Fails the protocol as written** (probabilities summing to 1 within 1e-3 on 18/20 first-pass rows, not 20/20). Cause is two-decimal rounding in the vendor's output, not a missing name, a wrong version or an access fault. No amendment made; the owner decides. Until then C is not cleared for the V run, and nothing else in this log has been filled in. |
+| G2 under amendment 7 (2026-10-14, after inspecting V) | The original verdict above stands. Read against the amended rule (sum within 0.02): usable 20/20 first pass and 20/20 second pass, version `jev-1.13.0`, self-agreement same choice 20/20, largest probability difference 0.05. Replayed offline from the saved responses with the amended code, no new calls. The owner's approval of this eligibility verdict is required before G3. |
 | Price on the day of the run | |
 | Pre-run commit (G3) | |
 | Arm A finished | |
@@ -287,3 +288,48 @@ partition, arm, calibration, cost, statistic or hypothesis definition changes.
    rows were excluded.
 6. **Probabilities.** "Covers all 77 names" and "sums to 1 within 1e-3" are checked over the 77 names only;
    any other key in `probabilities` is ignored and never ranked.
+
+**2026-10-14, at G2, after the probe and before any row of H has been scored. Made after inspecting
+validation set V.** The G2 probe (`3480ebe`) ran on 20 rows of V. Its 40 responses (20 first-pass
+records, 20 self-agreement repeats) were read before this amendment was written, so the change below
+was chosen with V's probe responses in view. No row of the held-out set H has been scored by any arm
+and none was read. The probe's verdict under the text as it stood is kept in the evaluation log and
+in `3480ebe`: **G2 failed** (probabilities summing to 1 within 1e-3 on 18 of 20 first-pass rows). This
+amendment does not make that probe a pass; it changes the rule the probe is read against.
+
+7. **Probability sum tolerance, 1e-3 becomes 0.02.** Wherever this text says probabilities "sum to 1
+   within 1e-3" (the abstention rule under arm C, gate G2, and amendment 6), the tolerance is 0.02,
+   inclusive. Everything else about that check is unchanged: all 77 names present, each a number in
+   [0, 1], other keys ignored, no renormalisation, and a response outside the tolerance abstains both
+   variants. The reason is measured, not assumed. Audit of the 40 raw probe responses (SHA-256 of the
+   files read: cache `2a6344ed91c114ead8bf20825342e9c27c7dfa3aeaa6697b94f6c943cd2e8998`, probe log
+   `d9edf38139f10b0b32e9caf299281b91bbf406dc53f5fd2bfed0dd509236dbfe`, ledger
+   `07525b0a294cbb317b8f703fe209cd52df196a28c3274c5a66e643ced50c3c81`):
+   - every response has exactly 77 names, a valid `choice`, and reports version `jev-1.13.0`;
+   - every probability is a multiple of 0.01 (the vendor rounds to two decimals);
+   - the sums are 1.00 on 34 responses and 0.99 on 6, so the largest `|sum - 1|` is 0.01 and no
+     other deviation occurs;
+   - on every response the `choice` is the argmax of its probabilities.
+
+   Two-decimal rounding therefore explains every failure of the old rule: a sum of 0.99 is the shape
+   rounding leaves, not a malformed answer. The choice of 0.02 is twice the largest deviation seen
+   (n = 40 responses, one model version, so a small sample). It does not hide malformed responses:
+   each of the 40 real responses was damaged four ways in a throwaway check (one name dropped, an
+   unknown `choice`, all mass halved, a string in place of a number) and all 160 damaged variants are
+   still rejected, and the unit tests reject sums at 0.03 from 1. A response that rounds to a deviation
+   above 0.02 abstains and is counted with C's other model abstentions. The 20 probe first-pass
+   responses stay C's V records, byte-for-byte as cached.
+8. **Self-agreement is read over all 20 pairs.** The probe's printed figures previously compared
+   only pairs in which both responses passed the schema check, which dropped four pairs and printed
+   "same choice 16/20, largest difference 0.010". Reading every pair gives the same `choice` on 20 of
+   20 and a largest probability difference of 0.05 (`top_up_failed`, top probability 0.19 then 0.18).
+   From now on the probe reports schema validity (per pass) separately from agreement; a pair whose
+   choice is unreadable counts as not the same, and the probability difference is read only on pairs
+   with a number for each of the 77 names, with the pair count printed when it is below 20. The
+   original printout is superseded; the log records both readings.
+
+Under amendment 7 the saved probe passes G2 on its three stated checks (all 77 names accepted,
+probabilities summing to 1 within 0.02, reported version `jev-1.13.0`), and self-agreement is
+measured. G3 has not been run, and the amended G2 verdict awaits the owner's approval before it does.
+The code change is `PROBABILITY_TOLERANCE` and the probe summary in the commit that carries this
+amendment; the partition, arms, calibration, cost, statistics and hypotheses are unchanged.

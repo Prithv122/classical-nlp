@@ -176,13 +176,35 @@ def test_unusable_choice_or_probabilities_abstain_both_variants(variant, bad):
     assert _top(_tweak(**bad), variant) == (-1, 0.0)
 
 
-def test_probabilities_are_not_renormalised_but_the_tolerance_is_1e_3():
-    even = dict.fromkeys(NAMES, 1 / 77)
-    inside = {**even, "age_limit": even["age_limit"] + 9e-4}
-    outside = {**even, "age_limit": even["age_limit"] + 2e-3}
-    assert _top(_tweak(probabilities=inside), "prob")[0] != -1
-    assert _top(_tweak(probabilities=outside), "prob")[0] == -1
-    assert _top(_tweak(probabilities=inside), "prob")[1] == pytest.approx(1 / 77)
+def _off_by(delta):
+    """Probabilities summing to 1 + delta: card_arrival at 0.5 + delta, the rest even."""
+    peaked = {n: (0.5 if n == "card_arrival" else 0.5 / 76) for n in NAMES}
+    return {**peaked, "card_arrival": 0.5 + delta}
+
+
+@pytest.mark.parametrize("delta", [-0.01, 0.01, -0.02, 0.02])
+def test_a_sum_within_0_02_of_one_is_usable_and_not_renormalised(delta):
+    # The vendor rounds to two decimals, so a response summing to 0.99 is well formed
+    # (amendment 7); the bound is inclusive, and the confidence is the number as sent.
+    body = _tweak(probabilities=_off_by(delta))
+    assert _top(body, "prob") == (NAMES.index("card_arrival"), pytest.approx(0.5 + delta))
+
+
+@pytest.mark.parametrize("delta", [-0.03, 0.03, -0.4, 0.5])
+def test_a_sum_further_than_0_02_from_one_still_abstains(delta):
+    assert _top(_tweak(probabilities=_off_by(delta)), "prob") == (-1, 0.0)
+    assert _top(_tweak(probabilities=_off_by(delta)), "vendor") == (-1, 0.0)
+
+
+def test_a_two_decimal_response_that_sums_to_0_99_is_read():
+    # The shape seen in the G2 probe: two-decimal values, mass 0.99, top class 0.55.
+    shaped = {n: 0.0 for n in NAMES} | {"card_arrival": 0.55, "age_limit": 0.44}
+    assert sum(shaped.values()) == pytest.approx(0.99)
+    assert _top(_tweak(probabilities=shaped, confidence=0.54), "prob") == (
+        NAMES.index("card_arrival"),
+        0.55,
+    )
+    assert _top(_tweak(probabilities=shaped, confidence=0.54), "vendor")[1] == 0.54
 
 
 @pytest.mark.parametrize("confidence", [None, 1.5, -0.1, "0.8", float("nan"), True])
@@ -424,7 +446,9 @@ def _provider(script, key=KEY):
         made.append((host, timeout, FakeConnection(script)))
         return made[-1][2]
 
-    environ = {"TYPESAFE_API_KEY": key} if key else {}
+    # An explicit environ replaces os.environ, so it must carry the no-keyring switch itself:
+    # without it a missing-key test reads whatever key is stored on the machine.
+    environ = {"SECRETS_NO_KEYRING": "1"} | ({"TYPESAFE_API_KEY": key} if key else {})
     return ts.TypeSafeProvider(connection_factory=factory, environ=environ), made
 
 
