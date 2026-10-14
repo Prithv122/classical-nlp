@@ -251,9 +251,10 @@ that case.
 | Item | Record |
 |---|---|
 | Implementation commit (G1) and CI run | `d3b2550` (2026-10-14), CI run 38558866110 success; lint clean, 388 offline tests pass |
-| Access route and date | |
-| Probe (version, schema, median input tokens, p50 latency) | |
-| Self-agreement (same choice n/20, largest probability difference) | |
+| Access route and date | TypeSafe direct, `typesafe:https://api.typesafe.ai/v1/systemone`, 2026-10-14; ledger created by this probe (`--new-ledger`) |
+| Probe (version, schema, median input tokens, p50 latency) | Version `jev-1.13.0` on all 40 responses. Schema check as the client reports it: 18/20 on the first pass, 16/20 on the second. Every failure is the sum rule only: all 77 names present and `choice` valid in all 40, but probabilities sum to 0.99, not 1 within 1e-3, on 2/20 first-pass rows (positions 8 and 10 of the probe list) and 4/20 second-pass rows (6, 8, 10, 12). Probabilities carry two decimals of real precision. Median input tokens 1,031 (1,023 to 1,041). p50 latency 0.345 s (first request 0.535 s, a cold start). No retries, all HTTP 200. |
+| Self-agreement (same choice n/20, largest probability difference) | The client prints "same choice 16/20, largest difference 0.010", but it compares only the 16 pairs where both responses pass the sum check. Over all 20 pairs, read back from the cache and the probe log: same `choice` 20/20, largest probability difference 0.05 (position 10, `top_up_failed`, top probability 0.19 then 0.18), next 0.03 (positions 6, 8, 12). |
+| G2 outcome | **Fails the protocol as written** (probabilities summing to 1 within 1e-3 on 18/20 first-pass rows, not 20/20). Cause is two-decimal rounding in the vendor's output, not a missing name, a wrong version or an access fault. No amendment made; the owner decides. Until then C is not cleared for the V run, and nothing else in this log has been filled in. |
 | Price on the day of the run | |
 | Pre-run commit (G3) | |
 | Arm A finished | |
@@ -261,7 +262,7 @@ that case.
 | Arm C finished (calls, input tokens, dollars, transport failures; V cache prefix) | |
 | Baseline round-trip time | |
 | Audit result | |
-| Total spent / remaining of $5.00 | |
+| Total spent / remaining of $5.00 | $0.0017 / $4.9983 after the probe (40 calls, 41,236 input tokens; client-computed from reported usage, dashboard figure not yet checked) |
 
 ## Amendments
 
