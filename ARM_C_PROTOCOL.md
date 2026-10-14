@@ -250,7 +250,7 @@ that case.
 
 | Item | Record |
 |---|---|
-| Implementation commit (G1) and CI run | |
+| Implementation commit (G1) and CI run | `d3b2550` (2026-10-14), CI run 38558866110 success; lint clean, 388 offline tests pass |
 | Access route and date | |
 | Probe (version, schema, median input tokens, p50 latency) | |
 | Self-agreement (same choice n/20, largest probability difference) | |
@@ -265,4 +265,24 @@ that case.
 
 ## Amendments
 
-None.
+**2026-10-14, at the G1 implementation freeze (`d3b2550`), before any decision-model call and before any
+arm has scored a row of H.** These record how the implementation reads points this text left open. No
+partition, arm, calibration, cost, statistic or hypothesis definition changes.
+
+1. **Route.** Only the TypeSafe direct route (`POST https://api.typesafe.ai/v1/systemone`, endpoint identity
+   `typesafe:https://api.typesafe.ai/v1/systemone`) has a client. The Cloudflare route's request schema was
+   not documented when G1 was frozen. If access arrives through Cloudflare first, its adapter and a further
+   dated amendment come before G2, and "No silent switch" applies unchanged.
+2. **Errors that are not retried.** `401` and `403` stop the run (a credential problem, not a ticket
+   outcome). Any other error that is not retried, including a `200` whose body is not JSON, is a transport
+   failure after that one attempt, under G5.
+3. **Responses that stop the run.** A response whose reported model version is missing, or whose
+   `usage.input_tokens` is missing, stops the run, as a changed version already does: the budget and version
+   rules cannot be applied without them.
+4. **Accuracy by raw confidence (H3).** The protocol's "decile" table uses 10 equal-width bins of [0, 1],
+   closed on the right, the same bins as ECE. Equal-frequency deciles break when many confidences equal 1.0.
+5. **Cold starts (H4).** Every request that opens a new connection is excluded from the latency figures:
+   the first request of each run, and any reconnect after a dropped connection. The report states how many
+   rows were excluded.
+6. **Probabilities.** "Covers all 77 names" and "sums to 1 within 1e-3" are checked over the 77 names only;
+   any other key in `probabilities` is ignored and never ranked.
