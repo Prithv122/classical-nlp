@@ -14,6 +14,7 @@ import pytest
 from classicalnlp import cli, tickets
 from classicalnlp.data import Corpus
 from classicalnlp.router import FakeDecisionProvider, fake_decision_response
+from classicalnlp.router.llm_arm import FakeLLM, fake_completion
 
 NAMES = list(tickets.BANKING77_INTENTS)
 
@@ -95,6 +96,27 @@ def test_arm_a_is_fit_on_the_refit_set_and_the_heldout_label_is_written(
     assert [r["y_true"] for r in rows[: len(held)]] == held.labels
     assert cli.main(_route(tmp_path, "val", "--save", str(save), arm="A")) == 0
     assert f"fit {len(fit)} rows, evaluated {len(val)} rows" in capsys.readouterr().out
+    assert {json.loads(line)["split"] for line in _lines(save)} == {"val"}
+
+
+def _route_b(tmp_path, split, save):
+    argv = ["route", "--arm", "B", "--partition", "abc", "--split", split, "--data-dir", "d"]
+    return [*argv, "--cache", str(tmp_path / "b.jsonl"), "--save", str(save)]
+
+
+def test_arm_b_writes_the_heldout_label_and_scores_the_heldout_rows(monkeypatch, tmp_path, capsys):
+    fit, _, held = _use_corpora(monkeypatch)
+    fake = FakeLLM(lambda query: fake_completion("card_arrival"))
+    monkeypatch.setattr(cli, "_make_provider", lambda args: fake)
+    save = tmp_path / "b.jsonl"
+    assert cli.main(_route_b(tmp_path, "heldout", save)) == 0
+    assert f"fit {len(fit)} rows, evaluated {len(held)} rows" in capsys.readouterr().out
+    rows = [json.loads(line) for line in _lines(save)]
+    # Arm B's held-out rows were once written with the default label "test", which the audit
+    # rejects and the report would read as the official test split.
+    assert {r["split"] for r in rows} == {"heldout"} and len(rows) == 4 * len(held)
+    assert [r["y_true"] for r in rows[: len(held)]] == held.labels
+    assert cli.main(_route_b(tmp_path, "val", save)) == 0
     assert {json.loads(line)["split"] for line in _lines(save)} == {"val"}
 
 

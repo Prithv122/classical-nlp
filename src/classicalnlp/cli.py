@@ -274,7 +274,7 @@ def cmd_route(args: argparse.Namespace) -> int:
         client = LLMClient(_make_provider(args), cache)
         runs = []
         for arm in llm_arms(client):
-            runs += study.run_arm(arm, fit, val, test)
+            runs += study.run_arm(arm, fit, val, test, split_name=split_name)
         label = "B (variants B-logprob, B-verbal)"
     elif args.arm == "C":
         cache, ledger = dec.DecisionCache(args.cache), _open_ledger(args)
